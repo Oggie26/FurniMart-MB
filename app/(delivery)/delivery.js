@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Modal,
   RefreshControl,
   SafeAreaView,
@@ -90,9 +91,13 @@ const DeliveryStaffDashboard = () => {
         customerSignature: item.customerSignature || null,
         deliveryNotes: item.deliveryNotes || "",
 
-        // Payment info
-        paymentMethod: item.order?.paymentMethod,
-        paymentStatus: item.order?.paymentStatus,
+        // Payment info from order.payment
+        paymentMethod: item.order?.payment?.paymentMethod || "COD",
+        paymentStatus: item.order?.payment?.paymentStatus || "PENDING",
+        transactionCode: item.order?.payment?.transactionCode || null,
+
+        // Invoice PDF
+        pdfFilePath: item.order?.pdfFilePath || null,
       }));
 
       setAllDeliveries(orders);
@@ -450,14 +455,93 @@ const DeliveryStaffDashboard = () => {
                 </View>
               )}
 
-              {selectedOrder.totalAmount && (
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Tổng tiền thu hộ (COD)</Text>
+              {/* Payment Details Section */}
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>Thông tin thanh toán</Text>
+
+                {/* Payment Method */}
+                <View style={styles.paymentRow}>
+                  <Text style={styles.paymentLabel}>Phương thức:</Text>
+                  <View style={[
+                    styles.paymentMethodBadge,
+                    { backgroundColor: selectedOrder.paymentMethod === 'COD' ? '#FFF5F5' : '#EBF8FF' }
+                  ]}>
+                    <Ionicons
+                      name={selectedOrder.paymentMethod === 'COD' ? 'cash-outline' : 'card-outline'}
+                      size={14}
+                      color={selectedOrder.paymentMethod === 'COD' ? '#E53E3E' : '#3182CE'}
+                    />
+                    <Text style={[
+                      styles.paymentMethodText,
+                      { color: selectedOrder.paymentMethod === 'COD' ? '#E53E3E' : '#3182CE' }
+                    ]}>
+                      {selectedOrder.paymentMethod === 'COD' ? 'Tiền mặt (COD)' : 'VNPay'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Payment Status */}
+                <View style={styles.paymentRow}>
+                  <Text style={styles.paymentLabel}>Trạng thái:</Text>
+                  <View style={[
+                    styles.paymentStatusBadge,
+                    { backgroundColor: selectedOrder.paymentStatus === 'PAID' ? '#F0FFF4' : '#FFFAF0' }
+                  ]}>
+                    <Ionicons
+                      name={selectedOrder.paymentStatus === 'PAID' ? 'checkmark-circle' : 'time-outline'}
+                      size={14}
+                      color={selectedOrder.paymentStatus === 'PAID' ? '#38A169' : '#D69E2E'}
+                    />
+                    <Text style={[
+                      styles.paymentStatusText,
+                      { color: selectedOrder.paymentStatus === 'PAID' ? '#38A169' : '#D69E2E' }
+                    ]}>
+                      {selectedOrder.paymentStatus === 'PAID' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Transaction Code */}
+                {selectedOrder.transactionCode && (
+                  <View style={styles.paymentRow}>
+                    <Text style={styles.paymentLabel}>Mã GD:</Text>
+                    <Text style={styles.transactionCode}>{selectedOrder.transactionCode}</Text>
+                  </View>
+                )}
+
+                {/* Total Amount */}
+                <View style={styles.totalAmountContainer}>
+                  <Text style={styles.totalAmountLabel}>
+                    {selectedOrder.paymentMethod === 'COD' && selectedOrder.paymentStatus !== 'PAID'
+                      ? 'Tổng tiền thu hộ:'
+                      : 'Tổng tiền:'}
+                  </Text>
                   <Text style={styles.totalAmount}>
-                    {selectedOrder.totalAmount.toLocaleString("vi-VN")}đ
+                    {selectedOrder.totalAmount?.toLocaleString("vi-VN")}đ
                   </Text>
                 </View>
+              </View>
+
+              {/* Invoice PDF Button */}
+              {selectedOrder.pdfFilePath && (
+                <TouchableOpacity
+                  style={styles.pdfButton}
+                  onPress={() => {
+                    const pdfUrl = selectedOrder.pdfFilePath;
+                    if (pdfUrl) {
+                      Linking.openURL(pdfUrl).catch(err => {
+                        Alert.alert("Lỗi", "Không thể mở file PDF");
+                        console.error("Error opening PDF:", err);
+                      });
+                    }
+                  }}
+                >
+                  <Ionicons name="document-text-outline" size={20} color="#3182CE" />
+                  <Text style={styles.pdfButtonText}>Xem hóa đơn (PDF)</Text>
+                  <Ionicons name="open-outline" size={16} color="#3182CE" />
+                </TouchableOpacity>
               )}
+
 
               {/* Delivery Proof Section - Only show for DELIVERED/COMPLETED orders */}
               {(selectedOrder.status === "DELIVERED" || selectedOrder.status === "COMPLETED") && (
@@ -1167,6 +1251,83 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "700",
     color: "#2F855A",
+  },
+  // Payment Details Styles
+  paymentRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  paymentLabel: {
+    fontSize: 14,
+    color: "#718096",
+    fontWeight: "500",
+  },
+  paymentMethodBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  paymentMethodText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  paymentStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  paymentStatusText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  transactionCode: {
+    fontSize: 13,
+    color: "#4A5568",
+    fontWeight: "500",
+    fontFamily: "monospace",
+  },
+  totalAmountContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 2,
+    borderTopColor: "#E2E8F0",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  totalAmountLabel: {
+    fontSize: 16,
+    color: "#2D3748",
+    fontWeight: "600",
+  },
+  // PDF Button Styles
+  pdfButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EBF8FF",
+    borderWidth: 1,
+    borderColor: "#3182CE",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 16,
+    gap: 8,
+  },
+  pdfButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#3182CE",
+    flex: 1,
+    textAlign: "center",
   },
   deliveryPhoto: {
     width: 150,

@@ -17,6 +17,7 @@ import {
 } from "react-native"
 import Toast from "react-native-toast-message"
 import Ionicons from "react-native-vector-icons/Ionicons"
+import Model3DViewer from "../../components/product/Model3DViewer"
 import { getAvailableProducts, getProductById, getProductStock } from "../../service/product"
 
 const { width, height } = Dimensions.get("window")
@@ -30,6 +31,7 @@ export default function ProductDetail() {
   const [selectedColor, setSelectedColor] = useState<any>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
+  const [show3D, setShow3D] = useState(false)
   const fadeAnim = useRef(new Animated.Value(1)).current
   const scaleAnim = useRef(new Animated.Value(1)).current
 
@@ -211,15 +213,38 @@ export default function ProductDetail() {
           </TouchableOpacity>
         </View>
 
+        {/* Image/3D Section */}
         <View style={styles.imageSection}>
-          <Animated.Image
-            source={{ uri: selectedImage || undefined }}
-            style={[styles.productImage, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}
-            resizeMode="contain"
-          />
+          {!show3D ? (
+            <Animated.Image
+              source={{ uri: selectedImage || undefined }}
+              style={[styles.productImage, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}
+              resizeMode="contain"
+            />
+          ) : (
+            selectedColor?.models3D?.[0]?.modelUrl && (
+              <Model3DViewer
+                modelUrl={selectedColor.models3D[0].modelUrl}
+                previewImage={selectedColor.models3D[0].previewImage || selectedImage || undefined}
+              />
+            )
+          )}
+
+          {/* 3D Toggle Button - Floating */}
+          {selectedColor?.models3D && selectedColor.models3D.length > 0 && (
+            <TouchableOpacity
+              style={styles.toggle3DButton}
+              onPress={() => setShow3D(!show3D)}
+            >
+              <Ionicons name={show3D ? "image" : "cube"} size={18} color="#fff" />
+              <Text style={styles.toggle3DText}>
+                {show3D ? "2D" : "3D"}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {selectedColor?.images?.length > 1 && (
+        {!show3D && selectedColor?.images?.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageGallery}>
             {selectedColor.images.map((img: any, i: number) => (
               <TouchableOpacity key={i} onPress={() => onSelectImage(img.image)}>
@@ -237,6 +262,7 @@ export default function ProductDetail() {
             ))}
           </ScrollView>
         )}
+
 
         <View style={styles.infoSection}>
           <Text style={styles.productName}>{product.name}</Text>
@@ -498,5 +524,29 @@ const styles = StyleSheet.create({
   stockStatus: {
     fontSize: 13,
     fontWeight: '700'
-  }
+  },
+
+  // 3D Viewer Styles
+  toggle3DButton: {
+    position: 'absolute',
+    top: 15,
+    right: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(59, 122, 87, 0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  toggle3DText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
 })
