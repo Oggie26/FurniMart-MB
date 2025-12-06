@@ -7,11 +7,20 @@
     "icon": "./assets/images/icon.png",
     "scheme": "furnimartmobileapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.furnimart.mobileapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ứng dụng cần truy cập camera để bạn có thể xem trước sản phẩm trong không gian thực."
+      }
     },
     "android": {
+      "package": "com.furnimart.mobileapp",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -57,7 +66,13 @@
       "expo-font",
       "expo-secure-store",
       "expo-asset",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "@viro-community/react-viro",
+        {
+          "cameraUsagePermission": "Cho phép FurniMart truy cập camera để hiển thị sản phẩm AR"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

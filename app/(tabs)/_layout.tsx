@@ -19,6 +19,7 @@ export default function TabLayout() {
         tabBarIcon: ({ focused }) => {
           let iconName = "";
           if (route.name === "home") iconName = focused ? "home" : "home-outline";
+          else if (route.name === "favourites") iconName = focused ? "heart" : "heart-outline";
           else if (route.name === "cart") iconName = focused ? "cart" : "cart-outline";
           else if (route.name === "settings") iconName = focused ? "settings" : "settings-outline";
 
@@ -57,6 +58,7 @@ export default function TabLayout() {
       })}
     >
       <Tabs.Screen name="home" />
+      <Tabs.Screen name="favourites" />
       <Tabs.Screen name="cart" />
       <Tabs.Screen name="settings" />
     </Tabs>
@@ -65,21 +67,21 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabBarStyle: {
-  position: "absolute",
-  bottom: 0, // 👈 Đặt sát đáy
-  left: 0,
-  right: 0,
-  backgroundColor: "white",
-  borderTopLeftRadius: 20,
-  borderTopRightRadius: 20,
-  height: 70,
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: -2 },
-  shadowOpacity: 0.1,
-  shadowRadius: 6,
-  elevation: 8,
-  paddingBottom: Platform.OS === "ios" ? 20 : 10,
-},
+    position: "absolute",
+    bottom: 0, // 👈 Đặt sát đáy
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: 70,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 8,
+    paddingBottom: Platform.OS === "ios" ? 20 : 10,
+  },
 
   iconContainer: {
     alignItems: "center",

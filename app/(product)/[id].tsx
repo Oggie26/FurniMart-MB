@@ -8,17 +8,28 @@ import {
   Animated,
   Dimensions,
   Image,
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native"
 import Toast from "react-native-toast-message"
 import Ionicons from "react-native-vector-icons/Ionicons"
 import Model3DViewer from "../../components/product/Model3DViewer"
-import { getAvailableProducts, getProductById, getProductStock } from "../../service/product"
+import {
+  getAvailableProducts,
+  getProductById,
+  getProductStock
+} from "../../service/product"
+import {
+  addFavoriteProduct,
+  checkFavoriteProduct,
+  removeFavoriteProduct
+} from "../../service/product/favorites"
+
 
 const { width, height } = Dimensions.get("window")
 
@@ -32,8 +43,42 @@ export default function ProductDetail() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [show3D, setShow3D] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isFavorite, setIsFavorite] = useState(false)
   const fadeAnim = useRef(new Animated.Value(1)).current
   const scaleAnim = useRef(new Animated.Value(1)).current
+
+  const handleToggleFavorite = async () => {
+    try {
+
+      if (isFavorite) {
+        await removeFavoriteProduct(id)
+        setIsFavorite(false)
+        Toast.show({
+          type: "success",
+          text1: "Đã xóa khỏi yêu thích",
+          position: "top",
+          visibilityTime: 1000,
+        })
+      } else {
+        await addFavoriteProduct(id)
+        setIsFavorite(true)
+        Toast.show({
+          type: "success",
+          text1: "Đã thêm vào yêu thích",
+          position: "top",
+          visibilityTime: 1000,
+        })
+      }
+    } catch (error) {
+      console.error("Lỗi khi toggle favorite:", error)
+      Toast.show({
+        type: "error",
+        text1: "Có lỗi xảy ra",
+        position: "top",
+      })
+    }
+  }
 
   const handleAddToCart = async () => {
     if (!selectedColor) {
@@ -109,6 +154,22 @@ export default function ProductDetail() {
 
   useEffect(() => {
     fetchProduct()
+  }, [id])
+
+  useEffect(() => {
+    const checkFavorite = async () => {
+      try {
+        const response = await checkFavoriteProduct(id)
+        if (response?.status === 200) {
+          setIsFavorite(response.data.data)
+        }
+      } catch (error) {
+        console.error("Lỗi khi check favorite:", error)
+      }
+    }
+    if (id) {
+      checkFavorite()
+    }
   }, [id])
 
   useEffect(() => {
@@ -208,8 +269,12 @@ export default function ProductDetail() {
             <Ionicons name="arrow-back" size={26} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Chi tiết sản phẩm</Text>
-          <TouchableOpacity>
-            <Ionicons name="heart-outline" size={26} color="#333" />
+          <TouchableOpacity onPress={handleToggleFavorite}>
+            <Ionicons
+              name={isFavorite ? "heart" : "heart-outline"}
+              size={26}
+              color={isFavorite ? "#e74c3c" : "#333"}
+            />
           </TouchableOpacity>
         </View>
 
@@ -222,12 +287,27 @@ export default function ProductDetail() {
               resizeMode="contain"
             />
           ) : (
-            selectedColor?.models3D?.[0]?.modelUrl && (
-              <Model3DViewer
-                modelUrl={selectedColor.models3D[0].modelUrl}
-                previewImage={selectedColor.models3D[0].previewImage || selectedImage || undefined}
-              />
-            )
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setIsFullscreen(true)}
+            >
+              {selectedColor?.models3D?.[0]?.modelUrl && (
+                <Model3DViewer
+                  modelUrl={selectedColor.models3D[0].modelUrl}
+                  previewImage={selectedColor.models3D[0].previewImage || selectedImage || undefined}
+                />
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Fullscreen Button - Only show in 3D mode */}
+          {show3D && (
+            <TouchableOpacity
+              style={styles.fullscreenButton}
+              onPress={() => setIsFullscreen(true)}
+            >
+              <Ionicons name="expand-outline" size={20} color="#fff" />
+            </TouchableOpacity>
           )}
 
           {/* 3D Toggle Button - Floating */}
@@ -262,7 +342,6 @@ export default function ProductDetail() {
             ))}
           </ScrollView>
         )}
-
 
         <View style={styles.infoSection}>
           <Text style={styles.productName}>{product.name}</Text>
@@ -340,9 +419,6 @@ export default function ProductDetail() {
             ))}
           </ScrollView>
 
-          {/* ========================================================== */}
-          {/* VỊ TRÍ MỚI: DANH SÁCH KHO NẰM DƯỚI CÙNG */}
-          {/* ========================================================== */}
           {stockLocations.length > 0 && (
             <View style={styles.stockContainer}>
               <Text style={styles.stockHeader}>Tình trạng tại các kho:</Text>
@@ -388,6 +464,38 @@ export default function ProductDetail() {
           <Text style={styles.buyButtonText}>{buttonLabel}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Fullscreen Modal - Only for 3D */}
+      {show3D && (
+        <Modal
+          visible={isFullscreen}
+          transparent={false}
+          animationType="fade"
+          onRequestClose={() => setIsFullscreen(false)}
+        >
+          <View style={styles.fullscreenContainer}>
+            {/* Close Button */}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setIsFullscreen(false)}
+            >
+              <Ionicons name="close" size={30} color="#fff" />
+            </TouchableOpacity>
+
+            {/* 3D Content */}
+            <View style={styles.fullscreenContent}>
+              {selectedColor?.models3D?.[0]?.modelUrl && (
+                <View style={styles.fullscreen3DContainer}>
+                  <Model3DViewer
+                    modelUrl={selectedColor.models3D[0].modelUrl}
+                    previewImage={selectedColor.models3D[0].previewImage || selectedImage || undefined}
+                  />
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   )
 }
@@ -407,6 +515,19 @@ const styles = StyleSheet.create({
   productImage: { width: width * 0.7, height: height * 0.35, borderRadius: 20 },
   imageGallery: { flexDirection: "row", paddingVertical: 8, paddingHorizontal: 4 },
   smallImage: { width: 80, height: 80, borderRadius: 10, marginHorizontal: 6 },
+  arButtonContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#fff',
+    marginHorizontal: 10,
+    borderRadius: 16,
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   infoSection: { paddingHorizontal: 20, marginTop: 10 },
   productName: { fontSize: 22, fontWeight: "700", color: "#222" },
   productCategory: { fontSize: 14, color: "#6c757d", marginTop: 4 },
@@ -548,5 +669,73 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginLeft: 4,
+  },
+
+  // Fullscreen Styles
+  fullscreenButton: {
+    position: 'absolute',
+    top: 15,
+    left: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  fullscreenContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 10,
+    borderRadius: 25,
+  },
+  fullscreenContent: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenImage: {
+    width: width,
+    height: height,
+  },
+  fullscreen3DContainer: {
+    width: width,
+    height: height * 0.8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenToggle3D: {
+    position: 'absolute',
+    bottom: 50,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(59, 122, 87, 0.95)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 6,
+  },
+  fullscreenToggle3DText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 8,
   },
 })

@@ -49,7 +49,6 @@ export const registerForPushNotifications = async () => {
             })).data;
             console.log("Push notification token:", token);
         } catch (e) {
-            console.error("Error getting push token:", e);
             return null;
         }
 

@@ -9,9 +9,9 @@ export const getProducts = async () => {
     }
 };
 
-export const getProductById = (id) => {
+export const getProductById = async (id) => {
     try {
-        const response = axiosClient.get(`/products/${id}`);
+        const response = await axiosClient.get(`/products/${id}`);
         return response;
     } catch (error) {
         throw error;
@@ -39,6 +39,45 @@ export const getAvailableProducts = async (productColorId) => {
 export const getProductStock = async (productColorId) => {
     try {
         const response = await axiosClient.get(`/inventories/stock/locations/all?productColorId=${productColorId}`);
+        return response;
+    } catch (error) {
+        throw error;
+    }
+}
+
+export const addFavoriteProduct = async (productId) => {
+    try {
+        const response = await axiosClient.post(`/favorites`, {
+            productId,
+        });
+        return response;
+    } catch (error) {
+        throw error;
+    }
+}
+
+export const removeFavoriteProduct = async (productId) => {
+    try {
+        const response = await axiosClient.delete(`/favorites/${productId}`);
+        return response;
+    } catch (error) {
+        throw error;
+    }
+}
+
+
+export const getFavoriteProducts = async () => {
+    try {
+        const response = await axiosClient.get(`/favorites`);
+        return response;
+    } catch (error) {
+        throw error;
+    }
+}
+
+export const checkFavoriteProduct = async (productId) => {
+    try {
+        const response = await axiosClient.get(`/favorites/productId=${productId}/check`);
         return response;
     } catch (error) {
         throw error;
