@@ -19,6 +19,7 @@ import {
   View
 } from "react-native";
 import { getProfile } from "../../service/auth/index";
+import { getBlogs } from "../../service/blog/index";
 import { getProducts } from "../../service/product/index";
 
 const Images = {
@@ -74,14 +75,20 @@ const HomeScreen = () => {
   const [fullName, setFullName] = useState("Bạn");
   const [refreshing, setRefreshing] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
+  const [blogs, setBlogs] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("Tất cả");
   const [cartCount, setCartCount] = useState(0);
 
   const fetchData = async () => {
     try {
-      const [userRes, productRes] = await Promise.all([getProfile(), getProducts()]);
+      const [userRes, productRes, blogRes] = await Promise.all([
+        getProfile(),
+        getProducts(),
+        getBlogs()
+      ]);
       if (userRes.status === 200) setFullName(userRes.data.data.fullName);
       if (productRes.status === 200) setProducts(productRes.data.data);
+      if (blogRes?.status === 200) setBlogs(blogRes.data.data || []);
     } catch (error) {
       console.error("Error fetching data:", error);
     }
@@ -106,7 +113,7 @@ const HomeScreen = () => {
       : products.filter((p) => p.categoryName?.toLowerCase() === selectedCategory.toLowerCase());
 
   return (
-    <LinearGradient colors={["#C1D8A2", "#A3BFFA"]} style={styles.gradient}>
+    <LinearGradient colors={["#C1D8A2", "#ffffffff"]} style={styles.gradient}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -114,8 +121,8 @@ const HomeScreen = () => {
       >
         <View style={styles.headerRow}>
           <Text style={styles.greeting}>Xin chào {fullName}</Text>
-          <TouchableOpacity>
-            <MaterialIcons name="notifications-none" size={28} color="#fff" />
+          <TouchableOpacity onPress={() => router.push("/(tabs)/settings")}>
+            <Ionicons name="settings-outline" size={28} color="#fff" />
           </TouchableOpacity>
         </View>
 
@@ -186,6 +193,72 @@ const HomeScreen = () => {
             <View style={styles.emptyState}>
               <Image source={{ uri: Images.empty }} style={styles.emptyImage} />
               <Text style={styles.emptyText}>Chưa có sản phẩm trong danh mục này</Text>
+            </View>
+          )}
+
+          {/* 📝 BLOG & TIPS */}
+          {blogs.length > 0 && (
+            <View style={styles.blogContainer}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="book-outline" size={24} color="#3B6C46" />
+                  <Text style={styles.sectionTitle2}>Blog & Tips</Text>
+                </View>
+                <TouchableOpacity>
+                  <Text style={styles.viewAllText}>Xem tất cả →</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 15, paddingBottom: 10 }}
+              >
+                {blogs.map((blog) => (
+                  <TouchableOpacity
+                    key={blog.id}
+                    activeOpacity={0.9}
+                    style={styles.blogCard}
+                    onPress={() => {
+                      const path = `/(blog)/detail/${blog.id}`;
+                      console.log("Navigating to blog:", path);
+                      router.push(path as any);
+                    }}
+                  >
+                    <Image
+                      source={{ uri: blog.image || "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=800" }}
+                      style={styles.blogCardImage}
+                    />
+                    <View style={styles.blogCardContent}>
+                      <View style={styles.blogCategoryTag}>
+                        <Text style={styles.blogCategoryText}>
+                          {blog.category?.toUpperCase() || 'BLOG'}
+                        </Text>
+                      </View>
+                      <Text style={styles.blogCardTitle} numberOfLines={2}>
+                        {blog.title}
+                      </Text>
+                      <Text style={styles.blogCardExcerpt} numberOfLines={2}>
+                        {blog.excerpt || blog.content?.substring(0, 80) + '...'}
+                      </Text>
+                      <View style={styles.blogCardFooter}>
+                        <View style={styles.blogAuthorInfo}>
+                          <Ionicons name="person-circle-outline" size={16} color="#718096" />
+                          <Text style={styles.blogAuthorName}>
+                            {blog.author || 'FurniMart Team'}
+                          </Text>
+                        </View>
+                        <View style={styles.blogReadTime}>
+                          <Ionicons name="time-outline" size={16} color="#718096" />
+                          <Text style={styles.blogReadTimeText}>
+                            {blog.readTime || '5 phút'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           )}
         </View>
@@ -350,6 +423,102 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: "#777",
+    fontWeight: "500",
+  },
+
+  // 📝 Blog Section Styles
+  blogContainer: {
+    marginTop: 25,
+    marginBottom: 30,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+    paddingHorizontal: 4, // Aligns with surrounding content better if needed
+  },
+  sectionTitle2: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#2D3748",
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#3B6C46",
+  },
+  blogCard: {
+    width: 280,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    marginRight: 4, // Slight spacing for shadow visibility
+  },
+  blogCardImage: {
+    width: "100%",
+    height: 150,
+  },
+  blogCardContent: {
+    padding: 16,
+  },
+  blogCategoryTag: {
+    backgroundColor: "#E6FFFA",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+    marginBottom: 10,
+  },
+  blogCategoryText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#2F855A",
+  },
+  blogCardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#2D3748",
+    marginBottom: 6,
+    lineHeight: 22,
+  },
+  blogCardExcerpt: {
+    fontSize: 13,
+    color: "#718096",
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  blogCardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F7FAFC",
+  },
+  blogAuthorInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  blogAuthorName: {
+    fontSize: 12,
+    color: "#718096",
+    fontWeight: "500",
+  },
+  blogReadTime: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  blogReadTimeText: {
+    fontSize: 12,
+    color: "#718096",
     fontWeight: "500",
   },
 });

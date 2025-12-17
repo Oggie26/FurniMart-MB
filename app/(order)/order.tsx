@@ -27,6 +27,21 @@ type Order = {
   user?: { fullName?: string };
   address?: { fullAddress?: string };
   payment?: { paymentStatus?: string; paymentMethod?: string };
+  orderDetails?: Array<{
+    id: number;
+    quantity: number;
+    price: number;
+    productColor?: {
+      product?: {
+        name?: string;
+        thumbnailImage?: string;
+      };
+      color?: {
+        colorName?: string;
+      };
+      images?: Array<{ image: string }>;
+    };
+  }>;
 };
 
 type StatusTabProps = {
@@ -42,8 +57,7 @@ type InfoRowProps = {
 };
 
 const TABS = [
-  { label: "Tất cả", value: "" },
-  { label: "Đang xử lý", value: "PRE_ORDER" },
+  { label: "Đang xử lý", value: "PROCESSING" },
   { label: "Hoàn thành", value: "COMPLETED" },
   { label: "Đã hủy", value: "CANCELLED" },
 ];
@@ -137,27 +151,65 @@ const translateStatus = (status: string) => {
 
 // ====================== COMPONENT CHÍNH ======================
 const OrderScreen = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [status, setStatus] = useState<string>(""); // "" = Tất cả
+  const [allOrders, setAllOrders] = useState<Order[]>([]);
+  const [status, setStatus] = useState<string>("PROCESSING"); // Mặc định là Đang xử lý
   const [loading, setLoading] = useState<boolean>(false);
   const router = useRouter();
 
+  // Fetch all orders on mount
   useEffect(() => {
     fetchOrders();
-  }, [status]);
+  }, []);
 
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const response = await getOrderByCustomer(status, 0, 100);
-      setOrders(response.data?.content || []);
+      // Fetch all orders by passing empty status
+      const response = await getOrderByCustomer("", 0, 100);
+      setAllOrders(response.data?.content || []);
     } catch (error) {
       console.error("Error fetching orders:", error);
-      setOrders([]);
+      setAllOrders([]);
     } finally {
       setLoading(false);
     }
   };
+
+  // Filter orders client-side
+  const filteredOrders = allOrders.filter((order) => {
+    if (status === "") return true;
+
+    if (status === "PROCESSING") {
+      return [
+        "PAYMENT",
+        "PRE_ORDER",
+        "CONFIRMED",
+        "SHIPPING",
+        "PACKAGED",
+        "ASSIGN_ORDER_STORE",
+        "PENDING",
+        "MANAGER_ACCEPT",
+        "READY_FOR_INVOICE",
+      ].includes(order.status);
+    }
+
+    if (status === "COMPLETED") {
+      return [
+        "COMPLETED",
+        "DELIVERED",
+        "FINISHED",
+      ].includes(order.status);
+    }
+
+    if (status === "CANCELLED") {
+      return [
+        "CANCELLED",
+        "MANAGER_REJECT",
+      ].includes(order.status);
+    }
+
+    return order.status === status;
+  });
 
   const renderOrderItem = ({ item }: { item: Order }) => {
     const statusColor = getStatusColor(item.status);
@@ -183,6 +235,31 @@ const OrderScreen = () => {
             </Text>
           </View>
         </View>
+
+        {/* Sản phẩm đầu tiên trong đơn */}
+        {item.orderDetails && item.orderDetails.length > 0 && (
+          <View style={styles.productPreview}>
+            <Image
+              source={{
+                uri:
+                  item.orderDetails[0].productColor?.images?.[0]?.image ||
+                  item.orderDetails[0].productColor?.product?.thumbnailImage ||
+                  EMPTY_ORDER_IMAGE,
+              }}
+              style={styles.productImage}
+            />
+            <View style={styles.productInfo}>
+              <Text style={styles.productName} numberOfLines={1}>
+                {item.orderDetails[0].productColor?.product?.name || "Sản phẩm"}
+              </Text>
+              <Text style={styles.productVariant}>
+                {item.orderDetails[0].productColor?.color?.colorName || "Màu sắc"} x {item.orderDetails[0].quantity}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.divider} />
 
         {/* Thông tin khách hàng & địa chỉ */}
         <InfoRow
@@ -274,7 +351,7 @@ const OrderScreen = () => {
 
       {/* Danh sách đơn hàng */}
       <FlatList
-        data={orders}
+        data={filteredOrders}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderOrderItem}
         ListEmptyComponent={
@@ -288,7 +365,7 @@ const OrderScreen = () => {
         }
         contentContainerStyle={[
           styles.listContainer,
-          orders.length === 0 && !loading && { flexGrow: 1 },
+          filteredOrders.length === 0 && !loading && { flexGrow: 1 },
         ]}
         showsVerticalScrollIndicator={false}
       />
@@ -450,5 +527,34 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: "center",
     paddingHorizontal: 40,
+  },
+  productPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  productImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  productInfo: {
+    flex: 1,
+  },
+  productName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  productVariant: {
+    fontSize: 13,
+    color: "#6B7280",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+    marginVertical: 10,
   },
 });

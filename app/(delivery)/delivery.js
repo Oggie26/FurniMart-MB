@@ -695,7 +695,7 @@ const DeliveryStaffDashboard = () => {
                   onPress: async () => {
                     await AsyncStorage.removeItem("staffId");
                     await AsyncStorage.removeItem("token");
-                    router.replace("/(auth)/login");
+                    router.replace("/(auth)");
                   },
                 },
               ]
