@@ -22,6 +22,7 @@ export default function TabLayout() {
           else if (route.name === "favourites") iconName = focused ? "heart" : "heart-outline";
           else if (route.name === "cart") iconName = focused ? "cart" : "cart-outline";
           else if (route.name === "settings") iconName = focused ? "settings" : "settings-outline";
+          else if (route.name === "ai") iconName = focused ? "sparkles" : "sparkles-outline";
 
           const scale = useSharedValue(focused ? 1.1 : 1);
           const animatedStyle = useAnimatedStyle(() => ({
@@ -58,6 +59,7 @@ export default function TabLayout() {
       })}
     >
       <Tabs.Screen name="home" />
+      <Tabs.Screen name="ai" />
       <Tabs.Screen name="favourites" />
       <Tabs.Screen name="cart" />
       <Tabs.Screen name="settings" />
