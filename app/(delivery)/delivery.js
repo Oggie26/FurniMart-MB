@@ -448,7 +448,7 @@ const DeliveryStaffDashboard = () => {
                         <Text style={{ fontSize: 12, color: '#718096' }}>x{item.quantity}</Text>
                       </View>
                       <Text style={styles.itemPrice}>
-                        {item.price?.toLocaleString("vi-VN")}đ
+                        {(item.price || 0).toLocaleString("vi-VN")}đ
                       </Text>
                     </View>
                   ))}
@@ -517,7 +517,7 @@ const DeliveryStaffDashboard = () => {
                       : 'Tổng tiền:'}
                   </Text>
                   <Text style={styles.totalAmount}>
-                    {selectedOrder.totalAmount?.toLocaleString("vi-VN")}đ
+                    {(selectedOrder.totalAmount || 0).toLocaleString("vi-VN")}đ
                   </Text>
                 </View>
               </View>

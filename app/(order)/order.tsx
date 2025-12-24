@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   SafeAreaView,
@@ -14,7 +15,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { getOrderByCustomer } from "../../service/order";
+import Toast from "react-native-toast-message";
+import { cancelOrder, getOrderByCustomer } from "../../service/order";
 
 const EMPTY_ORDER_IMAGE =
   "https://cdn-icons-png.flaticon.com/512/6134/6134065.png";
@@ -165,7 +167,7 @@ const OrderScreen = () => {
     try {
       setLoading(true);
       // Fetch all orders by passing empty status
-      const response = await getOrderByCustomer("", 0, 100);
+      const response = await getOrderByCustomer("", 0, 300);
       setAllOrders(response.data?.content || []);
     } catch (error) {
       console.error("Error fetching orders:", error);
@@ -173,6 +175,46 @@ const OrderScreen = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCancelOrder = async (orderId: number) => {
+    Alert.alert(
+      "Xác nhận hủy",
+      "Bạn có chắc chắn muốn hủy đơn hàng này không?",
+      [
+        { text: "Bỏ qua", style: "cancel" },
+        {
+          text: "Hủy đơn",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              // Using separate arguments as per service definition
+              await cancelOrder(orderId, "Khách hàng yêu cầu hủy qua Mobile App");
+
+              setAllOrders(prev => prev.map(o =>
+                o.id === orderId ? { ...o, status: 'CANCELLED' } : o
+              ));
+
+              Toast.show({
+                type: 'success',
+                text1: 'Thành công',
+                text2: `Đơn hàng #${orderId} đã được hủy.`,
+              });
+            } catch (error: any) {
+              console.error("Cancel order error:", error);
+              Toast.show({
+                type: 'error',
+                text1: 'Lỗi',
+                text2: error.response?.data?.message || 'Không thể hủy đơn hàng lúc này.',
+              });
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Filter orders client-side
@@ -278,7 +320,7 @@ const OrderScreen = () => {
           <View>
             <Text style={styles.totalLabel}>Tổng tiền</Text>
             <Text style={styles.totalAmount}>
-              {String(item.total?.toLocaleString("vi-VN") || "0")} ₫
+              {(item.total || 0).toLocaleString("vi-VN")} ₫
             </Text>
           </View>
           <View style={{ alignItems: "flex-end" }}>
@@ -300,17 +342,19 @@ const OrderScreen = () => {
         </View>
 
         {/* Ngày đặt hàng */}
-        <Text style={styles.orderDate}>
-          {String(
-            new Date(item.orderDate).toLocaleString("vi-VN", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
+        <View style={styles.footerRow}>
+
+
+          {/* Nút Hủy đơn cho status PROCESSING và các status cho phép hủy */}
+          {["PENDING", "PAYMENT", "PRE_ORDER"].includes(item.status) && (
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => handleCancelOrder(item.id)}
+            >
+              <Text style={styles.cancelButtonText}>Hủy đơn</Text>
+            </TouchableOpacity>
           )}
-        </Text>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -502,7 +546,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#9CA3AF",
     textAlign: "right",
+    // marginTop removed as it is now inside footerRow
+  },
+  footerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginTop: 8,
+  },
+  cancelButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#EF4444",
+    backgroundColor: "#FEF2F2",
+  },
+  cancelButtonText: {
+    color: "#EF4444",
+    fontSize: 13,
+    fontWeight: "600",
   },
   emptyContainer: {
     flex: 1,

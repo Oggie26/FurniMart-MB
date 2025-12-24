@@ -1,27 +1,30 @@
 import { getProductColorById } from "@/service/product";
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import { useRoute } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import { AnimatePresence, MotiView } from "moti";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
+  Alert,
   Image,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
-import { getOrderById } from "../../service/order";
+import { cancelOrder, getOrderById } from "../../service/order";
+
 
 export default function OrderDetail() {
   const route = useRoute();
-  const { id } = route.params;
-  const [order, setOrder] = useState(null);
-  const [productDetails, setProductDetails] = useState({});
+  const navigation = useNavigation();
+  const { id } = route?.params as { id: string | number };
+  const [order, setOrder] = useState<any>(null);
+  const [productDetails, setProductDetails] = useState<any>({});
   const [loading, setLoading] = useState(true);
-  const [showProcess, setShowProcess] = useState(false);
-  const [fadeAnim] = useState(new Animated.Value(0));
+  const [activeTab, setActiveTab] = useState<"INFO" | "TIMELINE">("INFO");
 
   useEffect(() => {
     const fetchOrderAndProducts = async () => {
@@ -30,7 +33,7 @@ export default function OrderDetail() {
         const orderData = res.data;
         setOrder(orderData);
 
-        const productPromises = orderData.orderDetails.map(async (item) => {
+        const productPromises = orderData.orderDetails.map(async (item: any) => {
           try {
             const res = await getProductColorById(item.productColorId);
             return { id: item.productColorId, data: res.data };
@@ -41,7 +44,7 @@ export default function OrderDetail() {
         });
 
         const productResults = await Promise.all(productPromises);
-        const productMap = {};
+        const productMap: any = {};
         productResults.forEach(({ id, data }) => {
           productMap[id] = data;
         });
@@ -55,14 +58,6 @@ export default function OrderDetail() {
 
     fetchOrderAndProducts();
   }, [id]);
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: showProcess ? 1 : 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  }, [showProcess]);
 
   if (loading)
     return (
@@ -78,7 +73,7 @@ export default function OrderDetail() {
       </View>
     );
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case "PRE_ORDER":
         return "#9F7AEA";
@@ -111,7 +106,7 @@ export default function OrderDetail() {
     }
   };
 
-  const getStatusText = (status) => {
+  const getStatusText = (status: string) => {
     switch (status) {
       case "PRE_ORDER":
         return "Đặt trước";
@@ -145,7 +140,8 @@ export default function OrderDetail() {
     }
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: any) => {
+    if (!dateString) return "";
     return new Date(dateString).toLocaleString("vi-VN", {
       day: "2-digit",
       month: "2-digit",
@@ -155,365 +151,543 @@ export default function OrderDetail() {
     });
   };
 
+  const calculateDeadline = (dateString: any) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    date.setDate(date.getDate() + 2);
+    return date.toLocaleDateString("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
+  const handleCancelOrder = () => {
+    Alert.alert(
+      "Xác nhận hủy",
+      "Bạn có chắc chắn muốn hủy đơn hàng này không?",
+      [
+        { text: "Bỏ qua", style: "cancel" },
+        {
+          text: "Hủy đơn",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await cancelOrder(order.id, "Khách hàng yêu cầu hủy qua Mobile App");
+
+              setOrder((prev: any) => ({ ...prev, status: "CANCELLED" }));
+
+              Alert.alert("Thành công", "Đơn hàng đã được hủy.");
+            } catch (error) {
+              console.error("Cancel order error:", error);
+              Alert.alert("Lỗi", "Không thể hủy đơn hàng lúc này.");
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const hasWarranty = ["FINISHED", "COMPLETED", "DELIVERED"].includes(order.status);
+  const hasInvoice = !!order.pdfFilePath;
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Đơn hàng #{order.id}</Text>
-        <View style={styles.statusBadge}>
-          <Text style={styles.statusText}>{getStatusText(order.status)}</Text>
+        <View>
+          <Text style={styles.title}>Đơn hàng #{order.id}</Text>
+          <Text style={styles.orderDate}>{formatDate(order.orderDate)}</Text>
         </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Thông tin người nhận</Text>
-
-        <View style={styles.infoRow}>
-          <Ionicons name="person-circle" size={22} color="#16a34a" />
-          <Text style={styles.infoText}>{order.user.fullName}</Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Ionicons name="call" size={20} color="#16a34a" />
-          <Text style={styles.infoText}>{order.user.phone}</Text>
-        </View>
-
-        <View style={styles.addressRow}>
-          <Ionicons name="location" size={22} color="#16a34a" />
-          <Text style={styles.addressText}>{order.address.addressLine}</Text>
-        </View>
-      </View>
-
-      {/* Products */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Sản phẩm</Text>
-        {order.orderDetails.map((item) => {
-          const productColor = productDetails[item.productColorId];
-          const detail = productColor?.data;
-          const product = detail?.product;
-          const color = detail?.color;
-
-          const imageUrl =
-            productColor?.images?.[0]?.image ||
-            product?.thumbnailImage ||
-            `https://picsum.photos/seed/${item.productColorId}/120/120`;
-
-          return (
-            <View key={item.id} style={styles.productCard}>
-              <Image source={{ uri: imageUrl }} style={styles.productImage} />
-              <View style={styles.productInfo}>
-                <Text style={styles.productName} numberOfLines={2}>
-                  {product?.name || "Đang tải..."}
-                </Text>
-
-                {color && (
-                  <View style={styles.colorSizeRow}>
-                    <View
-                      style={[
-                        styles.colorDot,
-                        { backgroundColor: color.hexCode || "#ccc" },
-                      ]}
-                    />
-                    <Text style={styles.colorCode}> {color.colorName}</Text>
-                  </View>
-                )}
-
-                <Text style={styles.quantity}>Số lượng: {item.quantity}</Text>
-                <Text style={styles.price}>
-                  {(item.price * item.quantity).toLocaleString()}₫
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
-
-      {/* Payment */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Thanh toán</Text>
-        <View style={styles.paymentRow}>
-          <MaterialIcons name="payment" size={22} color="#16a34a" />
-          <View style={styles.paymentMethodBadge}>
-            <Text style={styles.paymentMethodText}>
-              {order.payment.paymentMethod}
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.paymentStatusBadge,
-              {
-                backgroundColor:
-                  order.payment.paymentStatus === "PENDING"
-                    ? "#fb923c"
-                    : "#16a34a",
-              },
-            ]}
-          >
-            <Text style={styles.paymentStatusText}>
-              {order.payment.paymentStatus === "PENDING"
-                ? "Chưa thanh toán"
-                : "Đã thanh toán"}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Tổng thanh toán</Text>
-          <Text style={styles.totalAmount}>
-            {order.payment.total.toLocaleString()}₫
+        <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(order.status)}20` }]}>
+          <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
+            {getStatusText(order.status)}
           </Text>
         </View>
       </View>
 
-      {/* Timeline */}
-      <View style={styles.section}>
+      {/* Tabs */}
+      <View style={styles.tabContainer}>
         <TouchableOpacity
-          style={styles.timelineHeader}
-          onPress={() => setShowProcess(!showProcess)}
+          style={[styles.tabButton, activeTab === "INFO" && styles.activeTabButton]}
+          onPress={() => setActiveTab("INFO")}
         >
-          <Text style={styles.sectionTitle}>Lộ trình đơn hàng</Text>
-          <Ionicons
-            name={showProcess ? "chevron-up" : "chevron-down"}
-            size={24}
-            color="#16a34a"
-          />
+          <Text style={[styles.tabText, activeTab === "INFO" && styles.activeTabText]}>Chi tiết</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === "TIMELINE" && styles.activeTabButton]}
+          onPress={() => setActiveTab("TIMELINE")}
+        >
+          <Text style={[styles.tabText, activeTab === "TIMELINE" && styles.activeTabText]}>Lộ trình</Text>
+        </TouchableOpacity>
+      </View>
 
-        {showProcess && (
-          <Animated.View style={{ opacity: fadeAnim }}>
-            {order.processOrders.map((p, index) => (
-              <View key={p.id} style={styles.timelineItem}>
-                <View style={styles.timelineLineContainer}>
-                  <View
-                    style={[
-                      styles.timelineDot,
-                      { backgroundColor: getStatusColor(p.status) },
-                    ]}
-                  />
-                  {index < order.processOrders.length - 1 && (
-                    <View style={styles.timelineLine} />
+      <ScrollView style={styles.contentScroll} showsVerticalScrollIndicator={false}>
+        <AnimatePresence exitBeforeEnter>
+          {activeTab === "INFO" && (
+            <MotiView
+              key="info"
+              from={{ opacity: 0, translateX: -20 }}
+              animate={{ opacity: 1, translateX: 0 }}
+              exit={{ opacity: 0, translateX: -20 }}
+              transition={{ type: "timing", duration: 300 }}
+            >
+              {/* Receiver Info */}
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Thông tin nhận hàng</Text>
+                  {order.deadline && (
+                    <View style={styles.deadlineBadge}>
+                      <Ionicons name="time-outline" size={14} color="#dc2626" />
+                      <Text style={styles.deadlineText}>Dự kiến: {calculateDeadline(order.deadline)}</Text>
+                    </View>
                   )}
                 </View>
-                <View style={styles.timelineContent}>
-                  <Text style={styles.timelineStatus}>
-                    {getStatusText(p.status)}
-                  </Text>
-                  <Text style={styles.timelineTime}>
-                    {formatDate(p.createdAt)}
-                  </Text>
+
+                <View style={styles.infoRow}>
+                  <View style={styles.iconBox}>
+                    <Ionicons name="person" size={16} color="#16a34a" />
+                  </View>
+                  <Text style={styles.infoText}>{order.user?.fullName}</Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <View style={styles.iconBox}>
+                    <Ionicons name="call" size={16} color="#16a34a" />
+                  </View>
+                  <Text style={styles.infoText}>{order.user?.phone}</Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <View style={styles.iconBox}>
+                    <Ionicons name="location" size={16} color="#16a34a" />
+                  </View>
+                  <Text style={styles.addressText}>{order.address?.fullAddress || order.address?.addressLine}</Text>
                 </View>
               </View>
-            ))}
-          </Animated.View>
-        )}
-      </View>
 
-      {/* Tổng cộng */}
-      <View style={styles.finalTotalCard}>
-        <Text style={styles.finalTotalText}>
-          Tổng cộng:{" "}
-          <Text style={styles.finalAmount}>
-            {order.total.toLocaleString()}₫
-          </Text>
-        </Text>
-      </View>
+              {/* Products */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Sản phẩm</Text>
+                {order.orderDetails.map((item: any) => {
+                  const productColor = productDetails[item.productColorId];
+                  const detail = productColor?.data;
+                  const product = detail?.product;
+                  const color = detail?.color;
 
-      {/* QR Code */}
-      {order.qrCode && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Mã QR đơn hàng</Text>
-          <View style={styles.qrContainer}>
-            <Image
-              source={{ uri: order.qrCode }}
-              style={styles.qrImage}
-              resizeMode="contain"
-            />
-            <Text style={styles.qrSubtext}>Quét mã này để xác nhận giao hàng</Text>
-          </View>
-        </View>
-      )}
+                  const imageUrl =
+                    productColor?.images?.[0]?.image ||
+                    product?.thumbnailImage ||
+                    `https://picsum.photos/seed/${item.productColorId}/120/120`;
 
-      {/* Action Buttons */}
-      <View style={styles.section}>
-        {/* Cancel Button - Hide if SHIPPING, DELIVERED, FINISHED, CANCELLED */}
-        {!["SHIPPING", "DELIVERED", "FINISHED", "COMPLETED", "CANCELLED"].includes(order.status) && (
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => {
-              // TODO: Implement cancel order API
-              alert("Chức năng hủy đơn đang được phát triển");
-            }}
-          >
-            <Ionicons name="close-circle" size={20} color="#fff" />
-            <Text style={styles.cancelButtonText}>Hủy đơn hàng</Text>
-          </TouchableOpacity>
-        )}
+                  return (
+                    <View key={item.id} style={styles.productCard}>
+                      <Image source={{ uri: imageUrl }} style={styles.productImage} />
+                      <View style={styles.productInfo}>
+                        <Text style={styles.productName} numberOfLines={2}>
+                          {product?.name || "Đang tải..."}
+                        </Text>
+                        {color && (
+                          <View style={styles.colorSizeRow}>
+                            <View style={[styles.colorDot, { backgroundColor: color.hexCode || "#ccc" }]} />
+                            <Text style={styles.colorCode}> {color.colorName}</Text>
+                          </View>
+                        )}
+                        <View style={styles.priceRow}>
+                          <Text style={styles.price}>
+                            {(item.price || 0).toLocaleString()}₫
+                          </Text>
+                          <Text style={styles.quantity}>x{item.quantity}</Text>
+                        </View>
+                        <Text style={styles.itemTotal}>
+                          {((item.price || 0) * (item.quantity || 0)).toLocaleString()}₫
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
 
-        {/* Repay Button - Show if VNPAY and not PAID */}
-        {order.payment?.paymentMethod === "VNPAY" && order.payment?.paymentStatus !== "PAID" && (
-          <TouchableOpacity
-            style={styles.repayButton}
-            onPress={() => {
-              // TODO: Implement VNPay repayment
-              alert("Chức năng thanh toán lại đang được phát triển");
-            }}
-          >
-            <Ionicons name="card" size={20} color="#fff" />
-            <Text style={styles.repayButtonText}>Thanh toán lại (VNPay)</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </ScrollView>
+              {/* Payment Info */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Thanh toán</Text>
+                <View style={styles.paymentInfoContainer}>
+                  <View style={styles.paymentDetailRow}>
+                    <Text style={styles.paymentLabel}>Tổng tiền hàng</Text>
+                    <Text style={styles.paymentValue}>{(order.total || 0).toLocaleString()}₫</Text>
+                  </View>
+                  <View style={styles.paymentDetailRow}>
+                    <Text style={styles.paymentLabel}>Phí vận chuyển</Text>
+                    <Text style={styles.paymentValue}>Miễn phí</Text>
+                  </View>
+                  <View style={styles.divider} />
+                  <View style={styles.paymentDetailRow}>
+                    <Text style={styles.totalLabel}>Thành tiền</Text>
+                    <Text style={styles.totalAmount}>{(order.payment?.total || order.total || 0).toLocaleString()}₫</Text>
+                  </View>
+
+                  <View style={styles.paymentMethodsRow}>
+                    <View style={styles.methodBadge}>
+                      <Text style={styles.methodText}>{order.payment?.paymentMethod}</Text>
+                    </View>
+                    <Text style={[
+                      styles.paymentStatusText,
+                      { color: order.payment?.paymentStatus === "PAID" ? "#16a34a" : "#ca8a04" }
+                    ]}>
+                      {order.payment?.paymentStatus === "PAID" ? "Đã thanh toán" : "Chưa thanh toán"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Actions Section (Invoice & Warranty) */}
+              {(hasInvoice || hasWarranty) && (
+                <View style={[styles.section, styles.actionSection]}>
+                  <Text style={styles.sectionTitle}>Tài liệu đơn hàng</Text>
+                  <View style={styles.buttonGrid}>
+                    {hasInvoice && (
+                      <TouchableOpacity
+                        style={[styles.docButton, styles.invoiceButton]}
+                        onPress={() => Linking.openURL(order.pdfFilePath)}
+                      >
+                        <Ionicons name="document-text-outline" size={24} color="#ef4444" />
+                        <Text style={[styles.docButtonText, { color: "#ef4444" }]}>Xem hóa đơn</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {hasWarranty && (
+                      <TouchableOpacity
+                        style={[styles.docButton, styles.warrantyButton]}
+                        onPress={() => {
+                          if (order.warrantyClaimId) {
+                            Alert.alert("Bảo hành điện tử", `Mã bảo hành: ${order.warrantyClaimId}`);
+                          } else {
+                            Alert.alert("Bảo hành", "Sản phẩm được bảo hành chính hãng. Vui lòng giữ hóa đơn.");
+                          }
+                        }}
+                      >
+                        <Ionicons name="shield-checkmark-outline" size={24} color="#16a34a" />
+                        <Text style={[styles.docButtonText, { color: "#16a34a" }]}>Thông tin bảo hành</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* Order Actions (Cancel / Repay) */}
+              <View style={styles.bottomActions}>
+                {(["FINISHED", "COMPLETED", "DELIVERED"].includes(order.status)) && !order.warrantyClaimId && (
+                  <TouchableOpacity
+                    style={styles.warrantyRequestButton}
+                    onPress={() => {
+                      // @ts-ignore
+                      navigation.navigate('create-warranty', {
+                        orderId: order.id,
+                        userId: order.userId || order.user?.id,
+                        addressId: order.address?.id,
+                        orderDetails: order.orderDetails
+                      });
+                    }}
+                  >
+                    <Ionicons name="shield-checkmark-outline" size={20} color="#fff" />
+                    <Text style={styles.warrantyRequestText}>Yêu cầu bảo hành</Text>
+                  </TouchableOpacity>
+                )}
+
+                {!["SHIPPING", "DELIVERED", "FINISHED", "COMPLETED", "CANCELLED"].includes(order.status) && (
+                  <TouchableOpacity style={styles.cancelFullButton} onPress={handleCancelOrder}>
+                    <Text style={styles.cancelFullButtonText}>Hủy đơn hàng</Text>
+                  </TouchableOpacity>
+                )}
+
+                {order.payment?.paymentMethod === "VNPAY" && order.payment?.paymentStatus !== "PAID" && (
+                  <TouchableOpacity
+                    style={styles.repayFullButton}
+                    onPress={() => alert("Tính năng đang phát triển")}
+                  >
+                    <Text style={styles.repayFullButtonText}>Thanh toán ngay</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </MotiView>
+          )}
+
+          {activeTab === "TIMELINE" && (
+            <MotiView
+              key="timeline"
+              from={{ opacity: 0, translateX: 20 }}
+              animate={{ opacity: 1, translateX: 0 }}
+              exit={{ opacity: 0, translateX: 20 }}
+              transition={{ type: "timing", duration: 300 }}
+              style={styles.timelineContainer}
+            >
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Chi tiết hành trình</Text>
+                {/* Timeline List */}
+                {order.processOrders?.slice().reverse().map((p: any, index: number, arr: any[]) => (
+                  <View key={p.id} style={styles.timelineItem}>
+                    {/* Left Time Column */}
+                    <View style={styles.timelineTimeCol}>
+                      <Text style={styles.timeText}>{new Date(p.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</Text>
+                      <Text style={styles.dateText}>{new Date(p.createdAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</Text>
+                    </View>
+
+                    {/* Middle Line Column */}
+                    <View style={styles.timelineLineCol}>
+                      <View style={[styles.timelineDot, { backgroundColor: getStatusColor(p.status) }]} />
+                      {index < arr.length - 1 && <View style={styles.timelineConnector} />}
+                    </View>
+
+                    {/* Right Content Column */}
+                    <View style={styles.timelineContentCol}>
+                      <Text style={[styles.timelineStatusTitle, { color: getStatusColor(p.status) }]}>
+                        {getStatusText(p.status)}
+                      </Text>
+                      <Text style={styles.timelineDesc}>
+                        Đơn hàng đã chuyển sang trạng thái {getStatusText(p.status).toLowerCase()}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </MotiView>
+          )}
+        </AnimatePresence>
+      </ScrollView>
+    </View>
   );
 }
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f8fafc" },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f8fafc" },
+  container: { flex: 1, backgroundColor: "#f3f4f6" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f3f4f6" },
+  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f3f4f6" },
   emptyText: { fontSize: 16, color: "#6b7280" },
+
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
+    padding: 20,
     backgroundColor: "#fff",
+    paddingTop: 40, // Adjust for status bar if needed handled by SafeArea
+  },
+  title: { fontSize: 22, fontWeight: "800", color: "#111827" },
+  orderDate: { fontSize: 13, color: "#6b7280", marginTop: 4 },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  statusText: { fontSize: 12, fontWeight: "700" },
+
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
   },
-  qrContainer: {
+  tabButton: {
+    flex: 1,
     alignItems: "center",
-    marginTop: 12,
-    padding: 10,
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    paddingVertical: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
-  qrTitle: {
+  activeTabButton: {
+    borderBottomColor: "#16a34a",
+  },
+  tabText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#374151",
-    marginBottom: 8,
+    color: "#6b7280",
   },
-  qrImage: {
-    width: 180,
-    height: 180,
-    borderRadius: 12,
+  activeTabText: {
+    color: "#16a34a",
+    fontWeight: "700",
   },
-  title: { fontSize: 20, fontWeight: "700", color: "#1f2937" },
-  statusBadge: { backgroundColor: "#fef3c7", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  statusText: { fontSize: 12, fontWeight: "600", color: "#d97706" },
+
+  contentScroll: {
+    flex: 1,
+    padding: 16,
+  },
   section: {
     backgroundColor: "#fff",
-    marginHorizontal: 16,
-    marginTop: 12,
     borderRadius: 16,
     padding: 16,
+    marginBottom: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 3,
+    shadowRadius: 4,
     elevation: 2,
   },
-  sectionTitle: { fontSize: 17, fontWeight: "600", color: "#1f2937", marginBottom: 10 },
-  infoRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  infoText: { marginLeft: 10, fontSize: 15, color: "#374151" },
-  addressRow: { flexDirection: "row", alignItems: "flex-start" },
-  addressText: { marginLeft: 10, fontSize: 15, color: "#374151", flex: 1, lineHeight: 22 },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+    paddingBottom: 12,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: "700", color: "#1f2937" },
+  deadlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff1f2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  deadlineText: { fontSize: 11, color: '#e11d48', fontWeight: '600', marginLeft: 4 },
+
+  infoRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  iconBox: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: "#f0fdf4",
+    alignItems: "center", justifyContent: "center", marginRight: 12
+  },
+  infoText: { fontSize: 14, color: "#374151", fontWeight: "500" },
+  addressText: { fontSize: 14, color: "#374151", flex: 1, lineHeight: 20 },
+
   productCard: {
     flexDirection: "row",
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+    paddingBottom: 16,
+  },
+  productImage: { width: 70, height: 70, borderRadius: 8, backgroundColor: "#f3f4f6" },
+  productInfo: { flex: 1, marginLeft: 12 },
+  productName: { fontSize: 15, fontWeight: "600", color: "#1f2937", marginBottom: 4 },
+  colorSizeRow: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
+  colorDot: { width: 12, height: 12, borderRadius: 6, marginRight: 6, borderWidth: 1, borderColor: "#e5e7eb" },
+  colorCode: { fontSize: 12, color: "#6b7280" },
+  priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 },
+  price: { fontSize: 14, fontWeight: "500", color: "#1f2937" },
+  quantity: { fontSize: 13, color: "#6b7280" },
+  itemTotal: { fontSize: 14, fontWeight: "700", color: "#16a34a", alignSelf: "flex-end", marginTop: 4 },
+
+  paymentInfoContainer: { gap: 10 },
+  paymentDetailRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  paymentLabel: { fontSize: 14, color: "#6b7280" },
+  paymentValue: { fontSize: 14, fontWeight: "600", color: "#1f2937" },
+  divider: { height: 1, backgroundColor: "#e5e7eb", marginVertical: 4 },
+  totalLabel: { fontSize: 16, fontWeight: "700", color: "#1f2937" },
+  totalAmount: { fontSize: 18, fontWeight: "800", color: "#16a34a" },
+  paymentMethodsRow: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    marginTop: 8, backgroundColor: "#f9fafb", padding: 10, borderRadius: 8
+  },
+  methodBadge: { backgroundColor: "#dbeafe", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  methodText: { fontSize: 12, fontWeight: "600", color: "#1e40af" },
+  paymentStatusText: { fontSize: 13, fontWeight: "600" },
+
+  actionSection: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  buttonGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  docButton: {
+    flex: 1,
     padding: 12,
-    marginBottom: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    gap: 6,
   },
-  productImage: { width: 80, height: 80, borderRadius: 12 },
-  productInfo: { flex: 1, marginLeft: 12, justifyContent: "space-between" },
-  productName: { fontSize: 15, fontWeight: "600", color: "#1f2937" },
-  colorSizeRow: { flexDirection: "row", alignItems: "center", marginVertical: 4 },
-  colorDot: { width: 16, height: 16, borderRadius: 8 },
-  colorCode: { marginLeft: 6, fontSize: 13, color: "#6b7280" },
-  quantity: { fontSize: 14, fontWeight: "600", color: "#16a34a" },
-  price: { fontSize: 16, fontWeight: "700", color: "#111827" },
-  paymentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
+  invoiceButton: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fee2e2',
   },
-  paymentMethodBadge: {
-    backgroundColor: "#dcfce7",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+  warrantyButton: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#dcfce7',
   },
-  paymentMethodText: { fontSize: 13, color: "#16a34a", fontWeight: "600" },
-  paymentStatusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  paymentStatusText: { fontSize: 12, color: "#fff", fontWeight: "600" },
-  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  totalLabel: { fontSize: 16, color: "#374151" },
-  totalAmount: { fontSize: 18, fontWeight: "700", color: "#111827" },
-  timelineHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  timelineItem: { flexDirection: "row", marginLeft: 4, marginBottom: 16 },
-  timelineLineContainer: { alignItems: "center", width: 30 },
-  timelineDot: { width: 14, height: 14, borderRadius: 7, zIndex: 1 },
-  timelineLine: {
-    width: 2,
-    height: 50,
-    backgroundColor: "#e5e7eb",
-    position: "absolute",
-    top: 14,
-    left: 6.5,
-  },
-  timelineContent: { flex: 1, marginLeft: 12 },
-  timelineStatus: { fontSize: 15, fontWeight: "600", color: "#1f2937" },
-  timelineTime: { fontSize: 13, color: "#6b7280", marginTop: 2 },
-  finalTotalCard: {
-    backgroundColor: "#fff",
-    margin: 16,
-    padding: 16,
-    borderRadius: 16,
-    alignItems: "flex-end",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  finalTotalText: { fontSize: 18, color: "#1f2937" },
-  finalAmount: { fontSize: 22, fontWeight: "800", color: "#16a34a" },
-  qrSubtext: {
+  docButtonText: {
     fontSize: 13,
-    color: "#6b7280",
-    marginTop: 8,
-    textAlign: "center",
+    fontWeight: '600',
   },
-  cancelButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#dc2626",
-    paddingVertical: 14,
+
+  bottomActions: {
+    paddingBottom: 40,
+    gap: 12,
+  },
+  cancelFullButton: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ef4444",
+    padding: 16,
     borderRadius: 12,
-    marginBottom: 12,
+    alignItems: "center",
+  },
+  cancelFullButtonText: { color: "#ef4444", fontWeight: "700", fontSize: 15 },
+  repayFullButton: {
+    backgroundColor: "#16a34a",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  repayFullButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+
+  warrantyRequestButton: {
+    backgroundColor: "#16a34a",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
     gap: 8,
   },
-  cancelButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+  warrantyRequestText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+
+  // Timeline Styles
+  timelineContainer: {
+    flex: 1,
   },
-  repayButton: {
+  timelineItem: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#3182CE",
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
+    marginBottom: 20,
   },
-  repayButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+  timelineTimeCol: {
+    width: 60,
+    alignItems: "flex-end",
+    paddingRight: 10,
+  },
+  timeText: { fontSize: 13, fontWeight: "700", color: "#374151" },
+  dateText: { fontSize: 11, color: "#9ca3af" },
+  timelineLineCol: {
+    alignItems: "center",
+    width: 20,
+  },
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    zIndex: 10,
+  },
+  timelineConnector: {
+    flex: 1,
+    width: 2,
+    backgroundColor: "#e5e7eb",
+    marginVertical: 4,
+  },
+  timelineContentCol: {
+    flex: 1,
+    paddingLeft: 10,
+    paddingBottom: 10,
+  },
+  timelineStatusTitle: {
+    fontSize: 14, fontWeight: "700", marginBottom: 2,
+  },
+  timelineDesc: {
+    fontSize: 13, color: "#6b7280", lineHeight: 18,
   },
 });

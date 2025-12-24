@@ -1,12 +1,12 @@
 import axiosClient from "../axiosClient";
 
 export const getCart = async () => {
-    try {
-        const response = await axiosClient.get("/carts");
-        return response.data;
-    } catch (error) {
-        throw error;
-    }
+  try {
+    const response = await axiosClient.get("/carts");
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
 };
 
 export const addToCart = async ({ productColorId, quantity }) => {
@@ -51,7 +51,7 @@ export const updateCart = async (productColorId, quantity) => {
 export const checkout = async ({ addressId, cartId, voucherCode, paymentMethod }) => {
   try {
     const url = `/orders/mobile/checkout?addressId=${addressId}&cartId=${cartId}${voucherCode ? `&voucherCode=${voucherCode}` : ""
-    }&paymentMethod=${paymentMethod}`;
+      }&paymentMethod=${paymentMethod}`;
 
     const response = await axiosClient.post(url);
     return response.data;
@@ -62,11 +62,19 @@ export const checkout = async ({ addressId, cartId, voucherCode, paymentMethod }
 };
 
 export const getCartById = async (cartId) => {
-    try {
-        const response = await axiosClient.get(`/carts/${cartId}`);
-        return response;
-    } catch (error) {
-        throw error;
-    }
+  try {
+    const response = await axiosClient.get(`/carts/${cartId}`);
+    return response;
+  } catch (error) {
+    throw error;
+  }
 };
 
+export const getVoucherByCode = async (voucherCode) => {
+  try {
+    const response = await axiosClient.get(`/vouchers/code/${voucherCode}`);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};

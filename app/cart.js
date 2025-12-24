@@ -2,7 +2,7 @@
 
 import { getAddressDefault } from "@/service/address"; // <-- Đã đổi
 import { getProfile } from "@/service/auth";
-import { checkout, getCart, removeCart, updateCart } from "@/service/cart";
+import { checkout, getCart, getVoucherByCode, removeCart, updateCart } from "@/service/cart";
 import { Pacifico_400Regular, useFonts } from "@expo-google-fonts/pacifico";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
@@ -31,7 +31,6 @@ const Images = {
   placeholder: "https://via.placeholder.com/80",
 }
 
-// Dữ liệu Phương thức thanh toán
 const PAYMENT_METHODS = [
   { key: "COD", name: "Thanh toán khi nhận hàng (COD)", icon: "cash-outline" },
   { key: "VNPAY", name: "Thanh toán qua VNPAY", icon: "qr-code-outline" },
@@ -49,31 +48,26 @@ export default function Cart() {
   const [selectedAddress, setSelectedAddress] = useState(null)
   const [fontsLoaded] = useFonts({ Pacifico: Pacifico_400Regular })
 
-  // --- THÊM MỚI: State cho cartId và voucherCode ---
   const [cartId, setCartId] = useState(null)
   const [voucherCode, setVoucherCode] = useState("")
-  // ---------------------------------------------
+  const [appliedVoucher, setAppliedVoucher] = useState(null)
 
-  // State cho phương thức thanh toán
-  const [selectedPayment, setSelectedPayment] = useState(PAYMENT_METHODS[0]) // Mặc định là COD
+  const [selectedPayment, setSelectedPayment] = useState(PAYMENT_METHODS[0])
   const [isPaymentModalVisible, setIsPaymentModalVisible] = useState(false)
 
   const loadData = useCallback(async () => {
     try {
-      // 1. Lấy profile TRƯỚC TIÊN
       const profileRes = await getProfile()
       if (profileRes?.status !== 200 || !profileRes.data?.data?.id) {
         throw new Error("Không thể lấy thông tin người dùng")
       }
       const userId = profileRes.data.data.id
 
-      // 2. Lấy giỏ hàng VÀ địa chỉ default (song song)
       const [cartResponse, addressResponse] = await Promise.all([
         getCart(),
-        getAddressDefault(userId), // <-- Gọi hàm mới với userId LẤY ĐƯỢC
+        getAddressDefault(userId),
       ])
 
-      // 3. Xử lý giỏ hàng
       if (cartResponse?.data) {
         setCartItems(
           Array.isArray(cartResponse.data.items)
@@ -92,28 +86,24 @@ export default function Cart() {
         )
         setTotalPrice(cartResponse.data.totalPrice || 0)
 
-        // --- THÊM MỚI: Lấy cartId từ response ---
-        // (Giả sử response của getCart() có dạng { data: { cartId: '...', items: [...] } })
         setCartId(cartResponse.data.cartId || null)
-        // ---------------------------------------
       }
 
-      // 4. Xử lý địa chỉ (API trả về { status, data: {...} })
       if (addressResponse?.status === 200 && addressResponse.data) {
-        setSelectedAddress(addressResponse.data) // <-- Gán thẳng object
+        setSelectedAddress(addressResponse.data)
       } else {
-        setSelectedAddress(null) // Không có địa chỉ default
+        setSelectedAddress(null)
       }
     } catch (error) {
       console.error("Error loading data:", error)
       Alert.alert("Lỗi", "Không thể tải dữ liệu giỏ hàng hoặc địa chỉ.")
     }
-  }, []) // Thêm mảng phụ thuộc rỗng
+  }, [])
 
   useFocusEffect(
     useCallback(() => {
-      loadData() // <-- Gọi 1 hàm gộp duy nhất
-    }, [loadData]) // Thêm loadData vào dependency
+      loadData() //
+    }, [loadData])
   )
 
   const openItemModal = item => {
@@ -142,7 +132,7 @@ export default function Cart() {
   const handleSaveQuantity = async () => {
     try {
       await updateCart(selectedItem.productColorId, selectedItem.quantity)
-      await loadData() // Tải lại tất cả (bao gồm cả total price)
+      await loadData()
       closeItemModal()
     } catch (error) {
       console.error("Error saving quantity:", error)
@@ -187,12 +177,16 @@ export default function Cart() {
 
       if (selectedPayment.key === "COD") {
         Alert.alert("Thành công", "Đặt hàng thành công! Thanh toán khi nhận hàng.")
-        router.push("/order-success")
+        const paymentUrl = res.redirectUrl;
+        if (paymentUrl) {
+          await WebBrowser.openBrowserAsync(paymentUrl);
+        } else {
+          Alert.alert("Lỗi", "Không thể tạo liên kết thanh toán.");
+        }
       }
       else if (selectedPayment.key === "VNPAY") {
         const paymentUrl = res.redirectUrl;
         if (paymentUrl) {
-          // DÙNG WebBrowser → KHÔNG BỊ ENCODE HASH
           await WebBrowser.openBrowserAsync(paymentUrl);
         } else {
           Alert.alert("Lỗi", "Không thể tạo liên kết thanh toán.");
@@ -211,7 +205,57 @@ export default function Cart() {
     }
   }
 
-  // --- KẾT THÚC SỬA ---
+  const handleApplyVoucher = async () => {
+    if (!voucherCode.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập mã giảm giá");
+      return;
+    }
+
+    try {
+      const res = await getVoucherByCode(voucherCode);
+      if (res && res.data) {
+        const voucher = res.data;
+        let isValid = true;
+        let errorMsg = "";
+
+        if (!voucher.active) {
+          isValid = false;
+          errorMsg = "Mã đã bị vô hiệu hóa";
+        } else if (voucher.expired) {
+          isValid = false;
+          errorMsg = "Mã đã hết hạn";
+        } else if (totalPrice < voucher.minimumOrderAmount) {
+          isValid = false;
+          errorMsg = `Cần đơn tối thiểu ${formatPrice(voucher.minimumOrderAmount)}`;
+        }
+
+        setAppliedVoucher({ ...voucher, isValid, errorMsg });
+
+        if (isValid) {
+          Alert.alert("Thành công", `Áp dụng mã ${voucher.code} thành công!`);
+        }
+      } else {
+        Alert.alert("Lỗi", "Mã giảm giá không tồn tại.");
+        setAppliedVoucher(null);
+      }
+    } catch (error) {
+      console.error("Apply voucher error:", error);
+      Alert.alert("Lỗi", "Mã giảm giá không hợp lệ hoặc đã hết hạn.");
+      setAppliedVoucher(null);
+    }
+  };
+
+  const calculateDiscount = () => {
+    if (!appliedVoucher || !appliedVoucher.isValid) return 0;
+    if (appliedVoucher.type === 'PERCENTAGE') {
+      return (totalPrice * appliedVoucher.amount) / 100;
+    }
+    return 0;
+  };
+
+  const discountAmount = calculateDiscount();
+  const finalTotalPrice = totalPrice - discountAmount;
+
 
   const formatPrice = price =>
     Number(price || 0).toLocaleString("vi-VN", {
@@ -233,9 +277,8 @@ export default function Cart() {
     </TouchableOpacity>
   )
 
-  // Sửa: Hàm này CHỈ chuyển màn hình
   const handleManageAddress = () => {
-    router.push("/address") // Chuyển sang màn hình Quản lý địa chỉ
+    router.push("/address")
   }
 
   if (!fontsLoaded) return null
@@ -286,7 +329,7 @@ export default function Cart() {
   )
 
   return (
-    <LinearGradient colors={["#C1D8A2", "#A3BFFA"]} style={styles.gradient}>
+    <LinearGradient colors={["#C1D8A2", "#ffffffff"]} style={styles.gradient}>
       <SafeAreaView style={{ flex: 1 }}>
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()}>
@@ -300,7 +343,6 @@ export default function Cart() {
           <FlatList
             ListHeaderComponent={
               <>
-                {/* --- PHẦN 1: ĐỊA CHỈ --- */}
                 <View style={styles.addressContainer}>
                   <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
 
@@ -308,7 +350,7 @@ export default function Cart() {
                     <View
                       style={[
                         styles.addressItem,
-                        styles.addressSelected, // Luôn luôn là selected
+                        styles.addressSelected,
                       ]}
                     >
                       <Ionicons
@@ -356,23 +398,21 @@ export default function Cart() {
                   ) : (
                     <TouchableOpacity
                       style={styles.addAddressButton}
-                      onPress={handleManageAddress} // Vẫn gọi hàm chuyển màn hình
+                      onPress={handleManageAddress}
                     >
                       <Text style={styles.addAddressButtonText}>+ Thêm địa chỉ mới</Text>
                     </TouchableOpacity>
                   )}
                 </View>
 
-                {/* --- PHẦN 2: PHƯƠNG THỨC THANH TOÁN (GỌN HƠN) --- */}
                 <View style={styles.paymentContainer}>
                   <Text style={styles.sectionTitle}>Phương thức thanh toán</Text>
-                  {/* Chỉ hiển thị mục đã chọn */}
                   <TouchableOpacity
                     style={[
                       styles.addressItem,
                       styles.addressSelected,
                     ]}
-                    onPress={() => setIsPaymentModalVisible(true)} // <-- Mở Modal
+                    onPress={() => setIsPaymentModalVisible(true)}
                   >
                     <Ionicons
                       name={selectedPayment.icon}
@@ -407,14 +447,75 @@ export default function Cart() {
                     {/* Bạn có thể thêm hàm onPress cho nút Áp dụng nếu cần
                         ví dụ: onPress={handleApplyVoucher} 
                         Hiện tại, nó chỉ cần nhập vào là đủ */}
-                    <TouchableOpacity style={styles.voucherButton}>
+                    <TouchableOpacity
+                      style={styles.voucherButton}
+                      onPress={handleApplyVoucher}
+                    >
                       <Text style={styles.voucherButtonText}>Áp dụng</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-                {/* --- KẾT THÚC THÊM MỚI --- */}
+                {/* --- HIỂN THỊ THÔNG TIN VOUCHER ĐÃ ÁP DỤNG --- */}
+                {appliedVoucher && (
+                  <View style={[
+                    styles.appliedVoucherContainer,
+                    !appliedVoucher.isValid && { backgroundColor: '#f5f5f5', borderColor: '#ddd' }
+                  ]}>
+                    <View style={[styles.appliedVoucherInfo, { flex: 1, alignItems: 'flex-start' }]}>
+                      <Ionicons
+                        name={appliedVoucher.isValid ? "pricetag" : "alert-circle"}
+                        size={20}
+                        color={appliedVoucher.isValid ? "#3B6C46" : "#757575"}
+                        style={{ marginTop: 2 }}
+                      />
+                      <View style={{ marginLeft: 10, flex: 1 }}>
+                        <Text style={{ fontWeight: 'bold', fontSize: 15, color: appliedVoucher.isValid ? '#333' : '#757575' }}>
+                          {appliedVoucher.code}
+                        </Text>
 
-                {/* --- PHẦN 4: SẢN PHẨM --- */}
+                        <Text style={{ fontSize: 13, color: '#555', marginBottom: 2 }}>{appliedVoucher.name}</Text>
+
+                        {appliedVoucher.isValid ? (
+                          <>
+                            <Text style={{ fontSize: 14, color: '#2e7d32', fontWeight: '600' }}>
+                              Giảm {appliedVoucher.type === 'PERCENTAGE' ? `${appliedVoucher.amount}%` : formatPrice(appliedVoucher.amount)}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#888' }}>
+                              Đơn tối thiểu: {formatPrice(appliedVoucher.minimumOrderAmount)}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                              <Ionicons name="calendar-outline" size={12} color="#888" style={{ marginRight: 4 }} />
+                              <Text style={{ fontSize: 12, color: '#888' }}>
+                                HSD: {new Date(appliedVoucher.endDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                              </Text>
+                            </View>
+                          </>
+                        ) : (
+                          <>
+                            <Text style={{ fontSize: 13, color: '#d32f2f', fontWeight: '500', marginBottom: 2 }}>
+                              {appliedVoucher.errorMsg}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                              <Ionicons name="calendar-outline" size={12} color="#888" style={{ marginRight: 4 }} />
+                              <Text style={{ fontSize: 12, color: '#888' }}>
+                                HSD: {new Date(appliedVoucher.endDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                              </Text>
+                            </View>
+                          </>
+                        )}
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={{ paddingLeft: 10 }}
+                      onPress={() => {
+                        setAppliedVoucher(null);
+                        setVoucherCode("");
+                      }}
+                    >
+                      <Ionicons name="close-circle" size={24} color={appliedVoucher.isValid ? "#ff3b30" : "#757575"} />
+                    </TouchableOpacity>
+                  </View>
+                )}
                 <Text style={styles.sectionTitle}>Sản phẩm</Text>
               </>
             }
@@ -424,6 +525,7 @@ export default function Cart() {
             ListEmptyComponent={renderEmptyCart}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           />
         </View>
 
@@ -440,7 +542,18 @@ export default function Cart() {
                 end={{ x: 1, y: 1 }}
                 style={styles.cartButton}
               >
-                <Text style={styles.cartTotalText}>{formatPrice(totalPrice)}</Text>
+                <View>
+                  {appliedVoucher ? (
+                    <>
+                      <Text style={[styles.cartTotalText, { fontSize: 12, textDecorationLine: 'line-through', opacity: 0.8 }]}>
+                        {formatPrice(totalPrice)}
+                      </Text>
+                      <Text style={styles.cartTotalText}>{formatPrice(finalTotalPrice)}</Text>
+                    </>
+                  ) : (
+                    <Text style={styles.cartTotalText}>{formatPrice(totalPrice)}</Text>
+                  )}
+                </View>
                 <View style={styles.checkoutAction}>
                   <Text style={styles.cartText}>Thanh toán</Text>
                   <Ionicons name="arrow-forward" size={20} color="#fff" />
@@ -451,9 +564,7 @@ export default function Cart() {
         )}
       </SafeAreaView>
 
-      {/* Modal tăng giảm số lượng (của bạn) */}
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeItemModal}>
-        {/* ... (Code Modal tăng/giảm số lượng không đổi) ... */}
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             {selectedItem && (
@@ -514,7 +625,6 @@ export default function Cart() {
         </View>
       </Modal>
 
-      {/* --- THÊM MỚI: MODAL CHỌN PHƯƠNG THỨC THANH TOÁN --- */}
       <Modal
         visible={isPaymentModalVisible}
         transparent
@@ -524,7 +634,7 @@ export default function Cart() {
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
-          onPressOut={() => setIsPaymentModalVisible(false)} // Bấm bên ngoài để tắt
+          onPressOut={() => setIsPaymentModalVisible(false)}
         >
           <View style={[styles.modalContainer, { width: "90%" }]}>
             <Text style={styles.modalName}>Chọn phương thức thanh toán</Text>
@@ -679,6 +789,27 @@ const styles = StyleSheet.create({
   voucherButtonText: {
     color: "#fff",
     fontWeight: "600",
+    fontSize: 14,
+  },
+  appliedVoucherContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#e8f5e9",
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 10,
+    marginBottom: 20, // Added margin
+    borderWidth: 1,
+    borderColor: "#c8e6c9",
+  },
+  appliedVoucherInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  appliedVoucherText: {
+    marginLeft: 8,
+    color: "#2e7d32",
     fontSize: 14,
   },
   // -------------------------------
