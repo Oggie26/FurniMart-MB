@@ -23,13 +23,13 @@ import {
   confirmDeliveryAssignmentQRScan,
   getOrderByDeliveryStaff,
   getProfileStaff,
-  updateDeliveryStatus
+  rejectDeliveryAssignment,
+  updateDeliveryStatus,
 } from "../../service/delivery";
 import {
   registerForPushNotifications,
   setupNotificationListeners,
 } from "../../service/notifications";
-import { cancelOrder } from "../../service/order/index";
 import { getStoreById } from "../../service/store";
 
 const DeliveryStaffDashboard = () => {
@@ -91,14 +91,11 @@ const DeliveryStaffDashboard = () => {
         paymentMethod: item.order?.payment?.paymentMethod || "COD",
         paymentStatus: item.order?.payment?.paymentStatus || "PENDING",
         transactionCode: item.order?.payment?.transactionCode || null,
-
-        // Invoice PDF
         pdfFilePath: item.order?.pdfFilePath || null,
       }));
 
       setAllDeliveries(orders);
 
-      // Tính toán thống kê
       const statsCalculated = {
         total: orders.length,
         completed: orders.filter(o => o.status === 'DELIVERED' || o.status === 'COMPLETED').length,
@@ -115,12 +112,10 @@ const DeliveryStaffDashboard = () => {
     }
   };
 
-  // Logic lọc đơn hàng theo Tab
   const filterDeliveries = (orders, tab) => {
     let filtered = [];
     switch (tab) {
       case "PENDING":
-        // Tab Chờ lấy: Bao gồm các trạng thái trước khi đi giao (ASSIGNED, PREPARING, READY)
         filtered = orders.filter((o) =>
           o.status === "ASSIGNED" ||
           o.status === "PREPARING" ||
@@ -128,7 +123,6 @@ const DeliveryStaffDashboard = () => {
         );
         break;
       case "DELIVERING":
-        // Tab Đang giao: Chỉ bao gồm IN_TRANSIT
         filtered = orders.filter((o) => o.status === "IN_TRANSIT");
         break;
       case "COMPLETED":
@@ -165,26 +159,26 @@ const DeliveryStaffDashboard = () => {
     setActiveTab(tab);
   };
 
-  const handleCancelOrder = (orderId) => {
+  const handleRejectAssignment = (assignmentId) => {
     Alert.prompt(
-      "Xác nhận huỷ",
-      "Vui lòng nhập lý do huỷ đơn hàng:",
+      "Xác nhận từ chối",
+      "Vui lòng nhập lý do từ chối đơn hàng:",
       [
         { text: "Đóng", style: "cancel" },
         {
-          text: "Xác nhận huỷ",
+          text: "Xác nhận từ chối",
           onPress: async (reason) => {
             if (!reason || reason.trim() === "") {
-              Alert.alert("Lỗi", "Bạn phải nhập lý do huỷ");
+              Alert.alert("Lỗi", "Bạn phải nhập lý do từ chối");
               return;
             }
             try {
               setUpdatingStatus(true);
-              await cancelOrder(orderId, reason);
-              Alert.alert("Thành công", "Đơn hàng đã được huỷ.");
+              await rejectDeliveryAssignment(assignmentId, reason);
+              Alert.alert("Thành công", "Đã từ chối nhận đơn hàng.");
               await fetchData();
             } catch (error) {
-              Alert.alert("Lỗi", "Không thể huỷ đơn hàng. Vui lòng thử lại.");
+              Alert.alert("Lỗi", "Không thể từ chối đơn hàng. Vui lòng thử lại.");
             } finally {
               setUpdatingStatus(false);
             }
@@ -220,31 +214,23 @@ const DeliveryStaffDashboard = () => {
 
       setUpdatingStatus(true);
 
-      // Upload delivery photo to Cloudinary (always required)
       const uploadedImageUrl = proofData.image
         ? await uploadImageToCloudinary(proofData.image)
         : null;
 
-      // Step 1: Always call confirmDeliveryAssignment first to save photos/notes
       await confirmDeliveryAssignment({
         orderId: selectedOrder.orderId,
         deliveryPhotos: uploadedImageUrl ? [uploadedImageUrl] : [],
         deliveryNotes: proofData.notes || "",
       });
 
-      // Step 2: Call confirmDeliveryAssignmentQRScan based on method
       if (proofData.confirmationMethod === 'qr' && proofData.scannedQR) {
-        // Method 1: QR Scan confirmation
         await confirmDeliveryAssignmentQRScan({
           qrCode: proofData.scannedQR,
-          customerSignature: "", // QR method doesn't need signature, send empty string
         });
       } else if (proofData.confirmationMethod === 'signature' && proofData.signature) {
-        // Method 2: Signature confirmation
-        // Upload signature to Cloudinary
         const uploadedSignatureUrl = await uploadImageToCloudinary(proofData.signature);
 
-        // Call QR Scan API with stored QR code and signature
         if (selectedOrder.qrCode) {
           await confirmDeliveryAssignmentQRScan({
             qrCode: selectedOrder.qrCode,
@@ -271,7 +257,6 @@ const DeliveryStaffDashboard = () => {
     }
   };
 
-  // Hiển thị Badge trạng thái
   const renderStatusBadge = (status) => {
     let color = "#718096";
     let bg = "#EDF2F7";
@@ -366,23 +351,30 @@ const DeliveryStaffDashboard = () => {
     );
   };
 
-  // Hiển thị Nút bấm hành động
   const renderActionButton = (order) => {
-    // 1. Nếu đơn hàng đã SẴN SÀNG (READY) -> Hiện nút Lấy hàng
     if (order.status === "READY") {
       return (
-        <TouchableOpacity
-          style={[styles.actionButton, styles.confirmButton]}
-          onPress={() => handleStatusUpdate(order.id, "IN_TRANSIT")}
-          disabled={updatingStatus}
-        >
-          <Ionicons name="cube" size={18} color="#fff" />
-          <Text style={styles.confirmButtonText}>Xác nhận lấy hàng</Text>
-        </TouchableOpacity>
+        <View>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.confirmButton]}
+            onPress={() => handleStatusUpdate(order.id, "IN_TRANSIT")}
+            disabled={updatingStatus}
+          >
+            <Ionicons name="cube" size={18} color="#fff" />
+            <Text style={styles.confirmButtonText}>Xác nhận lấy hàng</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: '#F7FAFC', marginTop: 8, borderColor: '#E53E3E', borderWidth: 1 }]}
+            onPress={() => handleRejectAssignment(order.id)}
+          >
+            <Ionicons name="close-circle-outline" size={18} color="#E53E3E" />
+            <Text style={{ color: '#E53E3E', fontWeight: '600', fontSize: 14 }}>Từ chối giao hàng</Text>
+          </TouchableOpacity>
+        </View>
       );
     }
 
-    // 2. Nếu đơn hàng ĐANG GIAO (IN_TRANSIT) -> Hiện nút Hoàn tất
     else if (order.status === "IN_TRANSIT") {
       return (
         <View>
@@ -396,22 +388,29 @@ const DeliveryStaffDashboard = () => {
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: '#F7FAFC', marginTop: 8, borderColor: '#E53E3E', borderWidth: 1 }]}
-            onPress={() => handleCancelOrder(order.orderId)}
+            onPress={() => handleRejectAssignment(order.id)}
           >
             <Ionicons name="close-circle-outline" size={18} color="#E53E3E" />
-            <Text style={{ color: '#E53E3E', fontWeight: '600', fontSize: 14 }}>Huỷ đơn hàng</Text>
+            <Text style={{ color: '#E53E3E', fontWeight: '600', fontSize: 14 }}>Từ chối giao hàng</Text>
           </TouchableOpacity>
         </View>
       );
     }
 
-    // 3. Nếu đang chuẩn bị -> Thông báo chờ
     else if (order.status === "ASSIGNED" || order.status === "PREPARING") {
       return (
         <View style={styles.waitMessageContainer}>
           <Text style={styles.waitMessageText}>
             <Ionicons name="time-outline" size={14} /> Đang chờ cửa hàng đóng gói...
           </Text>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: '#F7FAFC', marginTop: 8, borderColor: '#E53E3E', borderWidth: 1 }]}
+            onPress={() => handleRejectAssignment(order.id)}
+          >
+            <Ionicons name="close-circle-outline" size={18} color="#E53E3E" />
+            <Text style={{ color: '#E53E3E', fontWeight: '600', fontSize: 14 }}>Từ chối giao hàng</Text>
+          </TouchableOpacity>
         </View>
       )
     }
@@ -491,11 +490,9 @@ const DeliveryStaffDashboard = () => {
                 </View>
               )}
 
-              {/* Payment Details Section */}
               <View style={styles.detailSection}>
                 <Text style={styles.detailLabel}>Thông tin thanh toán</Text>
 
-                {/* Payment Method */}
                 <View style={styles.paymentRow}>
                   <Text style={styles.paymentLabel}>Phương thức:</Text>
                   <View style={[
@@ -537,7 +534,6 @@ const DeliveryStaffDashboard = () => {
                   </View>
                 </View>
 
-                {/* Transaction Code */}
                 {selectedOrder.transactionCode && (
                   <View style={styles.paymentRow}>
                     <Text style={styles.paymentLabel}>Mã GD:</Text>
@@ -545,7 +541,6 @@ const DeliveryStaffDashboard = () => {
                   </View>
                 )}
 
-                {/* Total Amount */}
                 <View style={styles.totalAmountContainer}>
                   <Text style={styles.totalAmountLabel}>
                     Tổng tiền đơn hàng:
@@ -574,7 +569,6 @@ const DeliveryStaffDashboard = () => {
                 )}
               </View>
 
-              {/* Invoice PDF Button */}
               {selectedOrder.pdfFilePath && (
                 <TouchableOpacity
                   style={styles.pdfButton}
@@ -594,8 +588,6 @@ const DeliveryStaffDashboard = () => {
                 </TouchableOpacity>
               )}
 
-
-              {/* Delivery Proof Section - Only show for DELIVERED/COMPLETED orders */}
               {(selectedOrder.status === "DELIVERED" || selectedOrder.status === "COMPLETED") && (
                 <>
                   {selectedOrder.deliveryPhotos && selectedOrder.deliveryPhotos.length > 0 && (
@@ -671,37 +663,23 @@ const DeliveryStaffDashboard = () => {
                 </TouchableOpacity>
               )}
 
-              {/* Cancel Button - Hide if SHIPPING (IN_TRANSIT), DELIVERED, COMPLETED (FINISHED), CANCELLED */}
               {!["IN_TRANSIT", "DELIVERED", "COMPLETED", "FINISHED", "CANCELLED", "REJECTED"].includes(selectedOrder.status) && (
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: "#E53E3E", marginTop: 12 }]}
                   onPress={() => {
-                    Alert.alert(
-                      "Hủy đơn hàng",
-                      "Bạn có chắc chắn muốn hủy đơn hàng này không?",
-                      [
-                        { text: "Không", style: "cancel" },
-                        {
-                          text: "Hủy đơn",
-                          style: "destructive",
-                          onPress: () => handleStatusUpdate(selectedOrder.id, "CANCELLED")
-                        }
-                      ]
-                    );
+                    handleRejectAssignment(selectedOrder.id);
                   }}
                   disabled={updatingStatus}
                 >
                   <Ionicons name="close-circle" size={20} color="#fff" />
-                  <Text style={styles.confirmButtonText}>Hủy đơn hàng</Text>
+                  <Text style={styles.confirmButtonText}>Từ chối giao hàng</Text>
                 </TouchableOpacity>
               )}
 
-              {/* Repay Button - Show if VNPay and Unpaid */}
               {selectedOrder.paymentMethod === "VNPAY" && selectedOrder.paymentStatus !== "PAID" && (
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: "#3182CE", marginTop: 12 }]}
                   onPress={() => {
-                    // Placeholder for Repay logic
                     Alert.alert("Thanh toán lại", "Chức năng thanh toán lại đang được phát triển.");
                   }}
                 >
@@ -727,7 +705,6 @@ const DeliveryStaffDashboard = () => {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F7FAFC" }}>
-      {/* Navbar */}
       <View style={styles.navbar}>
         <View style={styles.navbarLeft}>
           <Ionicons name="bicycle" size={24} color="#2F855A" />
@@ -769,7 +746,6 @@ const DeliveryStaffDashboard = () => {
           />
         }
       >
-        {/* HEADER / PROFILE */}
         {profile && (
           <View style={styles.profileCard}>
             <View style={styles.profileHeader}>

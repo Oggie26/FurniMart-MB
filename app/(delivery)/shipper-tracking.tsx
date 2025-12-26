@@ -5,9 +5,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { TRACKING_CONFIG } from '../../constants/api';
-import { getDeliveryAssignmentByOrderId } from '../../service/delivery/index';
+import { getDeliveryAssignmentByOrderId, rejectDeliveryAssignment } from '../../service/delivery/index';
 import { updateDriverLocation } from '../../service/delivery/location';
-import { cancelOrder } from '../../service/order/index';
 export default function ShipperDeliveryScreen() {
 
 
@@ -123,29 +122,35 @@ export default function ShipperDeliveryScreen() {
         return [];
     };
 
-    const handleCancelOrder = () => {
+    const handleRejectAssignment = () => {
+        const assignmentId = deliveryData?.id;
+        if (!assignmentId) {
+            Alert.alert("Lỗi", "Không tìm thấy thông tin phân công.");
+            return;
+        }
+
         Alert.prompt(
-            "Xác nhận huỷ",
-            "Vui lòng nhập lý do huỷ đơn hàng:",
+            "Xác nhận từ chối",
+            "Vui lòng nhập lý do từ chối đơn hàng:",
             [
                 {
                     text: "Đóng",
                     style: "cancel"
                 },
                 {
-                    text: "Xác nhận huỷ",
+                    text: "Xác nhận từ chối",
                     onPress: async (reason: string | undefined) => {
                         if (!reason || reason.trim() === "") {
-                            Alert.alert("Lỗi", "Bạn phải nhập lý do huỷ");
+                            Alert.alert("Lỗi", "Bạn phải nhập lý do từ chối");
                             return;
                         }
                         try {
                             setLoading(true);
-                            await cancelOrder(orderId, reason);
-                            Alert.alert("Thành công", "Đơn hàng đã được huỷ.");
+                            await rejectDeliveryAssignment(assignmentId, reason);
+                            Alert.alert("Thành công", "Đã từ chối nhận đơn hàng.");
                             router.back();
                         } catch (error) {
-                            Alert.alert("Lỗi", "Không thể huỷ đơn hàng. Vui lòng thử lại.");
+                            Alert.alert("Lỗi", "Không thể từ chối đơn hàng. Vui lòng thử lại.");
                         } finally {
                             setLoading(false);
                         }
@@ -406,10 +411,10 @@ export default function ShipperDeliveryScreen() {
 
                             <TouchableOpacity
                                 style={[styles.controlButton, styles.cancelButton]}
-                                onPress={handleCancelOrder}
+                                onPress={handleRejectAssignment}
                             >
                                 <Ionicons name="close-circle" size={24} color="white" />
-                                <Text style={styles.buttonText}>Huỷ đơn hàng</Text>
+                                <Text style={styles.buttonText}>Từ chối giao hàng</Text>
                             </TouchableOpacity>
 
 

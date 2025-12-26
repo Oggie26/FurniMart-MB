@@ -66,7 +66,6 @@ export const getDeliveryAssignmentByOrderId = async (orderId) => {
         const response = await axiosClient.get(`/delivery/assignments/order/${orderId}`);
         return response;
     } catch (error) {
-        // console.error("getDeliveryAssignmentByOrderId error:", error.response?.data || error.message);
         throw error;
     }
 }
@@ -87,6 +86,16 @@ export const confirmDeliveryAssignmentQRScan = async (request) => {
         return response;
     } catch (error) {
         console.error("confirmDeliveryAssignmentQRScan error:", error.response?.data || error.message);
+        throw error;
+    }
+}
+
+export const rejectDeliveryAssignment = async (assignmentId, reason) => {
+    try {
+        const response = await axiosClient.post(`/delivery/assignments/${assignmentId}/reject`, { reason });
+        return response;
+    } catch (error) {
+        console.error("rejectDeliveryAssignment error:", error.response?.data || error.message);
         throw error;
     }
 }

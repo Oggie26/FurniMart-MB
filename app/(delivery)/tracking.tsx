@@ -18,8 +18,8 @@ export default function CustomerTrackingScreen() {
     };
 
     const warehouseLoc = useMemo(() => ({
-        latitude: params.storeLat ? parseFloat(getParam(params.storeLat)) : 10.762622,
-        longitude: params.storeLng ? parseFloat(getParam(params.storeLng)) : 106.660172,
+        latitude: params.storeLat ? parseFloat(getParam(params.storeLat)) : 10.79810,
+        longitude: params.storeLng ? parseFloat(getParam(params.storeLng)) : 106.69165,
     }), [params.storeLat, params.storeLng]);
 
     const customerLoc = useMemo(() => ({
@@ -210,7 +210,6 @@ export default function CustomerTrackingScreen() {
                     </View>
                 </Marker>
 
-                {/* Driver Marker - Green with Truck Icon */}
                 {driverLocation && (
                     <Marker
                         coordinate={driverLocation}
@@ -224,7 +223,6 @@ export default function CustomerTrackingScreen() {
                     </Marker>
                 )}
 
-                {/* Road Polyline */}
                 {routeCoords.length > 0 && (
                     <Polyline
                         coordinates={routeCoords}
@@ -233,16 +231,13 @@ export default function CustomerTrackingScreen() {
                     />
                 )}
 
-                {/* Route Polyline (Direct lines) */}
                 {driverLocation && (
                     <>
-                        {/* Warehouse to Driver */}
                         <Polyline
                             coordinates={[warehouseLoc, driverLocation]}
                             strokeColor="#10b981"
                             strokeWidth={3}
                         />
-                        {/* Driver to Customer */}
                         <Polyline
                             coordinates={[driverLocation, customerLoc]}
                             strokeColor="#94a3b8"
@@ -253,7 +248,6 @@ export default function CustomerTrackingScreen() {
                 )}
             </MapView>
 
-            {/* Info Card */}
             <View style={styles.infoCard}>
                 {loading && !driverLocation ? (
                     <View style={styles.loadingContainer}>
