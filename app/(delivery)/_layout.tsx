@@ -6,6 +6,7 @@ export default function DeliveryLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="tabs" options={{ headerShown: false }} />
       <Stack.Screen name="delivery" options={{ headerShown: false }} />
+      <Stack.Screen name="tracking" options={{ headerShown: false }} />
     </Stack>
   );
 }

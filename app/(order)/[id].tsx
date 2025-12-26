@@ -1,6 +1,8 @@
+import { getDeliveryAssignmentByOrderId, getEmployeeById } from "@/service/delivery/index";
 import { getProductColorById } from "@/service/product";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useRoute } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import { AnimatePresence, MotiView } from "moti";
 import React, { useEffect, useState } from "react";
 import {
@@ -16,15 +18,16 @@ import {
 } from "react-native";
 import { cancelOrder, getOrderById } from "../../service/order";
 
-
 export default function OrderDetail() {
+  const router = useRouter();
   const route = useRoute();
-  const navigation = useNavigation();
   const { id } = route?.params as { id: string | number };
   const [order, setOrder] = useState<any>(null);
   const [productDetails, setProductDetails] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"INFO" | "TIMELINE">("INFO");
+  const [deliveryInfo, setDeliveryInfo] = useState<any>(null);
+  const [shipperInfo, setShipperInfo] = useState<any>(null);
 
   useEffect(() => {
     const fetchOrderAndProducts = async () => {
@@ -32,6 +35,31 @@ export default function OrderDetail() {
         const res = await getOrderById(id);
         const orderData = res.data;
         setOrder(orderData);
+
+        try {
+          const deliveryRes = await getDeliveryAssignmentByOrderId(id);
+          // Check if we have valid response data structure
+          if (deliveryRes && deliveryRes.data && deliveryRes.data.data) {
+            const assignmentData = deliveryRes.data.data;
+            setDeliveryInfo(assignmentData);
+
+            if (assignmentData.deliveryStaffId) {
+              try {
+                console.log("Fetching staff info for:", assignmentData.deliveryStaffId);
+                const userRes = await getEmployeeById(assignmentData.deliveryStaffId);
+                setShipperInfo(userRes.data || userRes);
+              } catch (err: any) {
+                console.warn("Could not fetch shipper info.");
+              }
+            }
+          }
+        } catch (err: any) {
+          if (err.response?.data?.status === 1237 || err.response?.status === 404) {
+            console.log("No delivery assignment yet for this order.");
+          } else {
+            console.log("Error checking delivery assignment:", err.message);
+          }
+        }
 
         const productPromises = orderData.orderDetails.map(async (item: any) => {
           try {
@@ -269,6 +297,60 @@ export default function OrderDetail() {
                 </View>
               </View>
 
+              {/* Delivery Info (Store & Shipper) */}
+              {deliveryInfo && (
+                <MotiView
+                  from={{ opacity: 0, translateY: 10 }}
+                  animate={{ opacity: 1, translateY: 0 }}
+                  transition={{ type: 'timing', duration: 400 }}
+                  style={styles.section}
+                >
+                  <Text style={styles.sectionTitle}>Thông tin giao hàng</Text>
+
+                  {/* Store Info - Clean Row */}
+                  <View style={styles.simpleInfoRow}>
+                    <View style={[styles.simpleIconBox, { backgroundColor: '#eff6ff' }]}>
+                      <Ionicons name="storefront" size={18} color="#3b82f6" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.simpleLabel}>Cửa hàng</Text>
+                      <Text style={styles.simpleValue}>{deliveryInfo.storeName || "Hệ thống FurniMart"}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.simpleDivider} />
+
+                  {/* Shipper Info - Clean Row */}
+                  <View style={styles.simpleInfoRow}>
+                    <View style={[styles.simpleIconBox, { backgroundColor: '#f0fdf4' }]}>
+                      <Ionicons name="bicycle" size={18} color="#16a34a" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.simpleLabel}>Shipper</Text>
+                      {shipperInfo ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View>
+                            <Text style={styles.simpleValue}>{shipperInfo.fullName || "Tài xế"}</Text>
+                            <Text style={styles.simpleSubValue}>{shipperInfo.phone}</Text>
+                          </View>
+
+                          {shipperInfo.phone && (
+                            <TouchableOpacity
+                              style={styles.simpleCallButton}
+                              onPress={() => Linking.openURL(`tel:${shipperInfo.phone}`)}
+                            >
+                              <Ionicons name="call-outline" size={18} color="#16a34a" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      ) : (
+                        <Text style={[styles.simpleValue, { color: '#f59e0b', fontStyle: 'italic' }]}>Đang phân phối tài xế...</Text>
+                      )}
+                    </View>
+                  </View>
+                </MotiView>
+              )}
+
               {/* Products */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Sản phẩm</Text>
@@ -384,11 +466,14 @@ export default function OrderDetail() {
                     style={styles.warrantyRequestButton}
                     onPress={() => {
                       // @ts-ignore
-                      navigation.navigate('create-warranty', {
-                        orderId: order.id,
-                        userId: order.userId || order.user?.id,
-                        addressId: order.address?.id,
-                        orderDetails: order.orderDetails
+                      router.push({
+                        pathname: '/(order)/create-warranty',
+                        params: {
+                          orderId: order.id,
+                          userId: order.userId || order.user?.id,
+                          addressId: order.address?.id,
+                          orderDetails: JSON.stringify(order.orderDetails)
+                        }
                       });
                     }}
                   >
@@ -443,12 +528,48 @@ export default function OrderDetail() {
 
                     {/* Right Content Column */}
                     <View style={styles.timelineContentCol}>
-                      <Text style={[styles.timelineStatusTitle, { color: getStatusColor(p.status) }]}>
-                        {getStatusText(p.status)}
-                      </Text>
-                      <Text style={styles.timelineDesc}>
-                        Đơn hàng đã chuyển sang trạng thái {getStatusText(p.status).toLowerCase()}
-                      </Text>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.timelineStatusTitle, { color: getStatusColor(p.status) }]}>
+                            {getStatusText(p.status)}
+                          </Text>
+                          <Text style={styles.timelineDesc}>
+                            Đơn hàng đã chuyển sang trạng thái {getStatusText(p.status).toLowerCase()}
+                          </Text>
+                        </View>
+
+                        {/* THE BUTTON: Only show in the process step that matches SHIPPING/IN_TRANSIT AND if it's the latest such status */}
+                        {(p.status === "SHIPPING" || p.status === "IN_TRANSIT") && (
+                          <TouchableOpacity
+                            style={{
+                              backgroundColor: '#dbeafe',
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                              borderRadius: 12,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              marginTop: 2
+                            }}
+                            onPress={() => {
+                              router.push({
+                                pathname: "/(delivery)/tracking",
+                                params: {
+                                  orderId: order.id,
+                                  customerLat: order.address?.latitude,
+                                  customerLng: order.address?.longitude,
+                                  storeLat: order.store?.latitude,
+                                  storeLng: order.store?.longitude,
+                                }
+                              });
+                            }}
+                          >
+                            <Ionicons name="map-outline" size={14} color="#1e40af" />
+                            <Text style={{ color: '#1e40af', fontSize: 11, fontWeight: '700' }}>Theo dõi</Text>
+                          </TouchableOpacity>
+                        )}
+
+                      </View>
                     </View>
                   </View>
                 ))}
@@ -457,7 +578,7 @@ export default function OrderDetail() {
           )}
         </AnimatePresence>
       </ScrollView>
-    </View>
+    </View >
   );
 }
 
@@ -548,8 +669,58 @@ const styles = StyleSheet.create({
     width: 32, height: 32, borderRadius: 16, backgroundColor: "#f0fdf4",
     alignItems: "center", justifyContent: "center", marginRight: 12
   },
+  infoLabel: { fontSize: 12, color: "#6b7280", marginBottom: 2 },
   infoText: { fontSize: 14, color: "#374151", fontWeight: "500" },
   addressText: { fontSize: 14, color: "#374151", flex: 1, lineHeight: 20 },
+
+  // Simple Delivery Styles
+  simpleInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center', // Canh giữa theo chiều dọc
+    paddingVertical: 4,
+  },
+  simpleIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8, // Hình vuông bo tròn nhẹ hiện đại hơn
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  simpleLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 2,
+    textTransform: 'uppercase', // Chữ in hoa nhỏ gọn gàng
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  simpleValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  simpleSubValue: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 1,
+  },
+  simpleDivider: {
+    height: 1,
+    backgroundColor: '#f3f4f6',
+    marginVertical: 12,
+    marginLeft: 48, // Thụt vào thẳng hàng với text
+  },
+  simpleCallButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f0fdf4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#dcfce7',
+  },
 
   productCard: {
     flexDirection: "row",
@@ -648,7 +819,6 @@ const styles = StyleSheet.create({
   },
   warrantyRequestText: { color: "#fff", fontWeight: "700", fontSize: 15 },
 
-  // Timeline Styles
   timelineContainer: {
     flex: 1,
   },

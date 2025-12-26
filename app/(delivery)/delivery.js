@@ -29,6 +29,7 @@ import {
   registerForPushNotifications,
   setupNotificationListeners,
 } from "../../service/notifications";
+import { cancelOrder } from "../../service/order/index";
 import { getStoreById } from "../../service/store";
 
 const DeliveryStaffDashboard = () => {
@@ -60,38 +61,33 @@ const DeliveryStaffDashboard = () => {
       const ordersRes = await getOrderByDeliveryStaff(staffData.id);
       const rawOrders = ordersRes.data || [];
 
-      // Map dữ liệu từ API
       const orders = rawOrders.map(item => ({
         id: item.id.toString(),
-        // Giữ nguyên status gốc (ASSIGNED, PREPARING, READY, IN_TRANSIT...)
         status: item.status,
 
-        // Lấy thông tin khách hàng từ address
         customerName: item.order?.address?.name || "Khách lẻ",
         phone: item.order?.address?.phone || "N/A",
         shippingAddress: item.order?.address?.fullAddress || item.order?.address?.addressLine || "Địa chỉ không xác định",
 
         totalAmount: item.order?.total,
+        deposit: item.order?.depositPrice || 0,
 
         items: item.order?.orderDetails?.map(detail => ({
           name: detail.productColor?.product?.name || "Sản phẩm",
           color: detail.productColor?.color?.colorName || "",
           quantity: detail.quantity,
           price: detail.price,
-          // Lấy ảnh đầu tiên trong mảng images
           image: detail.productColor?.images?.[0]?.image || "https://via.placeholder.com/150"
         })) || [],
 
         originalOrderId: item.order?.id,
         orderId: item.order?.id,
-        qrCode: item.order?.qrCode || null, // QR code for delivery confirmation
+        qrCode: item.order?.qrCode || null,
 
-        // Delivery proof data
         deliveryPhotos: item.deliveryPhotos || [],
         customerSignature: item.customerSignature || null,
         deliveryNotes: item.deliveryNotes || "",
 
-        // Payment info from order.payment
         paymentMethod: item.order?.payment?.paymentMethod || "COD",
         paymentStatus: item.order?.payment?.paymentStatus || "PENDING",
         transactionCode: item.order?.payment?.transactionCode || null,
@@ -167,6 +163,36 @@ const DeliveryStaffDashboard = () => {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
+  };
+
+  const handleCancelOrder = (orderId) => {
+    Alert.prompt(
+      "Xác nhận huỷ",
+      "Vui lòng nhập lý do huỷ đơn hàng:",
+      [
+        { text: "Đóng", style: "cancel" },
+        {
+          text: "Xác nhận huỷ",
+          onPress: async (reason) => {
+            if (!reason || reason.trim() === "") {
+              Alert.alert("Lỗi", "Bạn phải nhập lý do huỷ");
+              return;
+            }
+            try {
+              setUpdatingStatus(true);
+              await cancelOrder(orderId, reason);
+              Alert.alert("Thành công", "Đơn hàng đã được huỷ.");
+              await fetchData();
+            } catch (error) {
+              Alert.alert("Lỗi", "Không thể huỷ đơn hàng. Vui lòng thử lại.");
+            } finally {
+              setUpdatingStatus(false);
+            }
+          }
+        }
+      ],
+      "plain-text"
+    );
   };
 
   const handleStatusUpdate = async (assignmentId, newStatus) => {
@@ -359,13 +385,23 @@ const DeliveryStaffDashboard = () => {
     // 2. Nếu đơn hàng ĐANG GIAO (IN_TRANSIT) -> Hiện nút Hoàn tất
     else if (order.status === "IN_TRANSIT") {
       return (
-        <TouchableOpacity
-          style={[styles.actionButton, styles.viewButton]}
-          onPress={() => handleOpenDetailModal(order)}
-        >
-          <Ionicons name="checkmark-done-circle" size={18} color="#2F855A" />
-          <Text style={styles.viewButtonText}>Hoàn tất giao hàng</Text>
-        </TouchableOpacity>
+        <View>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.viewButton]}
+            onPress={() => handleOpenDetailModal(order)}
+          >
+            <Ionicons name="checkmark-done-circle" size={18} color="#2F855A" />
+            <Text style={styles.viewButtonText}>Hoàn tất giao hàng</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: '#F7FAFC', marginTop: 8, borderColor: '#E53E3E', borderWidth: 1 }]}
+            onPress={() => handleCancelOrder(order.orderId)}
+          >
+            <Ionicons name="close-circle-outline" size={18} color="#E53E3E" />
+            <Text style={{ color: '#E53E3E', fontWeight: '600', fontSize: 14 }}>Huỷ đơn hàng</Text>
+          </TouchableOpacity>
+        </View>
       );
     }
 
@@ -512,14 +548,30 @@ const DeliveryStaffDashboard = () => {
                 {/* Total Amount */}
                 <View style={styles.totalAmountContainer}>
                   <Text style={styles.totalAmountLabel}>
-                    {selectedOrder.paymentMethod === 'COD' && selectedOrder.paymentStatus !== 'PAID'
-                      ? 'Tổng tiền thu hộ:'
-                      : 'Tổng tiền:'}
+                    Tổng tiền đơn hàng:
                   </Text>
                   <Text style={styles.totalAmount}>
                     {(selectedOrder.totalAmount || 0).toLocaleString("vi-VN")}đ
                   </Text>
                 </View>
+
+                {(selectedOrder.deposit > 0) && (
+                  <View style={styles.paymentRow}>
+                    <Text style={styles.paymentLabel}>Đã đặt cọc:</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedOrder.deposit.toLocaleString("vi-VN")}đ
+                    </Text>
+                  </View>
+                )}
+
+                {selectedOrder.paymentMethod === 'COD' && selectedOrder.paymentStatus !== 'PAID' && (
+                  <View style={[styles.totalAmountContainer, { marginTop: 8, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 8 }]}>
+                    <Text style={styles.totalAmountLabel}>Cần thanh toán:</Text>
+                    <Text style={[styles.totalAmount, { color: '#E53E3E' }]}>
+                      {((selectedOrder.totalAmount || 0) - (selectedOrder.deposit || 0)).toLocaleString("vi-VN")}đ
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Invoice PDF Button */}
@@ -793,6 +845,8 @@ const DeliveryStaffDashboard = () => {
             </View>
           </View>
         )}
+
+
 
         {/* TABS */}
         <View style={styles.tabContainer}>

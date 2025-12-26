@@ -18,6 +18,15 @@ export const getOrderByDeliveryStaff = async (deliveryStaffId) => {
     }
 }
 
+export const getEmployeeById = async (employeeId) => {
+    try {
+        const response = await axiosClient.get(`/employees/${employeeId}`);
+        return response.data;
+    } catch (error) {
+        throw error;
+    }
+}
+
 export const getDeliveryStats = async (deliveryStaffId) => {
     try {
         const response = await axiosClient.get(`/delivery/assignments/${deliveryStaffId}`);
@@ -57,7 +66,7 @@ export const getDeliveryAssignmentByOrderId = async (orderId) => {
         const response = await axiosClient.get(`/delivery/assignments/order/${orderId}`);
         return response;
     } catch (error) {
-        console.error("getDeliveryAssignmentByOrderId error:", error.response?.data || error.message);
+        // console.error("getDeliveryAssignmentByOrderId error:", error.response?.data || error.message);
         throw error;
     }
 }
